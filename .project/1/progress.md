@@ -22,6 +22,10 @@
 | 2026-01-31 | Created api.ts, storage.ts, sync.ts | success |
 | 2026-01-31 | Created mcp.ts, index.ts | success |
 | 2026-01-31 | Ran type-check | pass — zero errors |
+| 2026-01-31 | Validated with cf-validator | pass — all compliant |
+| 2026-01-31 | Committed setup to main, types to feature branch | success |
+| 2026-01-31 | Created PR #8 | success |
+| 2026-01-31 | Posted progress comment on issue #1 | success |
 
 ## Error Log
 
@@ -32,3 +36,5 @@
 
 | Test | Status | Notes |
 |------|--------|-------|
+| npm run type-check | pass | zero errors |
+| Cloudflare validation | pass | no anti-patterns |
