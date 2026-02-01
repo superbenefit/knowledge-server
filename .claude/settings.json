@@ -1,0 +1,6 @@
+{
+  "enabledPlugins": {
+    "project-mgmt@sb-marketplace": true,
+    "cloudflare-dev@sb-marketplace": true
+  }
+}
