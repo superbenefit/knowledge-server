@@ -1,11 +1,3 @@
-/**
- * For more details on how to configure Wrangler, refer to:
- * https://developers.cloudflare.com/workers/wrangler/configuration/
- */
-/**
- * For more details on how to configure Wrangler, refer to:
- * https://developers.cloudflare.com/workers/wrangler/configuration/
- */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "knowledge-server",
@@ -14,72 +6,72 @@
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
+
 	/**
-	 * Note: Use secrets to store sensitive data.
-	 * https://developers.cloudflare.com/workers/configuration/secrets/
-	 * 
-	 * Commands to set secrets:
-	 * npx wrangler secret put GITHUB_CLIENT_ID
-	 * npx wrangler secret put GITHUB_CLIENT_SECRET
-	 * npx wrangler secret put COOKIE_ENCRYPTION_KEY
+	 * Secrets (set via `npx wrangler secret put <NAME>`):
+	 *   GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, COOKIE_ENCRYPTION_KEY,
+	 *   GITHUB_WEBHOOK_SECRET, GITHUB_TOKEN,
+	 *   OPTIMISM_RPC_URL, MAINNET_RPC_URL, WALLETCONNECT_PROJECT_ID
 	 */
+
 	"migrations": [
 		{
 			"new_sqlite_classes": [
-				"MyMCP"
+				"SuperBenefitKnowledgeMCP"
 			],
 			"tag": "v1"
 		}
 	],
+
 	"durable_objects": {
 		"bindings": [
 			{
-				"class_name": "MyMCP",
+				"class_name": "SuperBenefitKnowledgeMCP",
 				"name": "MCP_OBJECT"
 			}
 		]
 	},
+
 	"kv_namespaces": [
+		{ "binding": "OAUTH_KV", "id": "<OAUTH_KV_ID>" },
+		{ "binding": "NONCE_KV", "id": "<NONCE_KV_ID>" },
+		{ "binding": "ROLE_CACHE", "id": "<ROLE_CACHE_ID>" },
+		{ "binding": "ENS_CACHE", "id": "<ENS_CACHE_ID>" },
+		{ "binding": "RERANK_CACHE", "id": "<RERANK_CACHE_ID>" },
+		{ "binding": "SYNC_STATE", "id": "<SYNC_STATE_ID>" }
+	],
+
+	"r2_buckets": [
+		{ "binding": "KNOWLEDGE", "bucket_name": "superbenefit-knowledge" }
+	],
+
+	"vectorize": [
+		{ "binding": "VECTORIZE", "index_name": "superbenefit-knowledge-idx" }
+	],
+
+	"queues": {
+		"consumers": [
+			{ "queue": "superbenefit-knowledge-sync", "max_batch_size": 10, "max_batch_timeout": 30 }
+		]
+	},
+
+	"workflows": [
 		{
-			"binding": "OAUTH_KV",
-			"id": "<Add-KV-ID>"
+			"name": "knowledge-sync-workflow",
+			"binding": "SYNC_WORKFLOW",
+			"class_name": "KnowledgeSyncWorkflow"
 		}
 	],
+
 	"ai": {
 		"binding": "AI"
 	},
+
 	"observability": {
 		"enabled": true
 	},
+
 	"dev": {
 		"port": 8788
 	}
-	/**
-	 * Smart Placement
-	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
-	 */
-	// "placement": {  "mode": "smart" }
-	/**
-	 * Bindings
-	 * Bindings allow your Worker to interact with resources on the Cloudflare Developer Platform, including
-	 * databases, object storage, AI inference, real-time communication and more.
-	 * https://developers.cloudflare.com/workers/runtime-apis/bindings/
-	 */
-	/**
-	 * Environment Variables
-	 * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
-	 * Note: Use secrets to store sensitive data.
-	 * https://developers.cloudflare.com/workers/configuration/secrets/
-	 */
-	// "vars": {  "MY_VARIABLE": "production_value" }
-	/**
-	 * Static Assets
-	 * https://developers.cloudflare.com/workers/static-assets/binding/
-	 */
-	// "assets": {  "directory": "./public/",  "binding": "ASSETS" }
-	/**
-	 * Service Bindings (communicate between multiple Workers)
-	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
-	 */
-	// "services": [  {   "binding": "MY_SERVICE",   "service": "my-service"  } ]
 }

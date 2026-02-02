@@ -1,14 +1,21 @@
 import { z } from '@hono/zod-openapi';
 import { ContentTypeSchema } from './content';
 
-// MCP tool input schemas (spec section 8.1)
-// These are used for both MCP tool registration and REST API validation
+// Shared search filters (spec section 6.2)
+export const SearchFiltersSchema = z.object({
+  contentType: ContentTypeSchema.optional(),
+  group: z.string().optional(),
+  release: z.string().optional(),
+  status: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+});
+
+export type SearchFilters = z.infer<typeof SearchFiltersSchema>;
 
 // Public tools
 export const SearchKnowledgeInputSchema = z.object({
   query: z.string(),
-  contentType: ContentTypeSchema.optional(),
-  limit: z.number().default(10),
+  filters: SearchFiltersSchema.optional(),
 });
 
 export type SearchKnowledgeInput = z.infer<typeof SearchKnowledgeInputSchema>;
@@ -20,39 +27,39 @@ export const DefineTermInputSchema = z.object({
 export type DefineTermInput = z.infer<typeof DefineTermInputSchema>;
 
 export const SearchLexiconInputSchema = z.object({
-  query: z.string(),
+  keyword: z.string(),
 });
 
 export type SearchLexiconInput = z.infer<typeof SearchLexiconInputSchema>;
 
 // Member tools
 export const GetDocumentInputSchema = z.object({
+  contentType: ContentTypeSchema,
   id: z.string(),
 });
 
 export type GetDocumentInput = z.infer<typeof GetDocumentInputSchema>;
 
-export const AddTermInputSchema = z.object({
-  term: z.string(),
-  definition: z.string(),
-  aliases: z.array(z.string()).optional(),
-});
-
-export type AddTermInput = z.infer<typeof AddTermInputSchema>;
-
 export const SaveLinkInputSchema = z.object({
   url: z.string().url(),
   title: z.string(),
-  tags: z.array(z.string()).optional(),
+  description: z.string().optional(),
 });
 
 export type SaveLinkInput = z.infer<typeof SaveLinkInputSchema>;
 
-// Vibecoder tools
-export const UpdateTermInputSchema = z.object({
-  term: z.string(),
-  definition: z.string().optional(),
-  aliases: z.array(z.string()).optional(),
+export const SearchWithDocumentsInputSchema = z.object({
+  query: z.string(),
+  filters: SearchFiltersSchema.optional(),
 });
 
-export type UpdateTermInput = z.infer<typeof UpdateTermInputSchema>;
+export type SearchWithDocumentsInput = z.infer<typeof SearchWithDocumentsInputSchema>;
+
+// Vibecoder tools
+export const CreateDraftInputSchema = z.object({
+  contentType: ContentTypeSchema,
+  title: z.string(),
+  content: z.string(),
+});
+
+export type CreateDraftInput = z.infer<typeof CreateDraftInputSchema>;

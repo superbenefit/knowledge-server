@@ -42,9 +42,9 @@ export const HATS_CONFIG = {
   },
 } as const;
 
-// Tools available per tier (spec section 2.8)
+// Tools available per tier (spec section 7.2)
 export const TIER_TOOLS: Record<AccessTier, readonly string[]> = {
-  public: ['search_knowledge', 'define_term', 'search_lexicon'],
-  member: ['search_knowledge', 'define_term', 'search_lexicon', 'add_term', 'save_link', 'get_document'],
-  vibecoder: ['search_knowledge', 'define_term', 'search_lexicon', 'add_term', 'save_link', 'get_document', 'update_term'],
+  public: ['search_knowledge', 'define_term', 'search_lexicon', 'list_groups', 'list_releases'],
+  member: ['search_knowledge', 'define_term', 'search_lexicon', 'list_groups', 'list_releases', 'get_document', 'search_with_documents', 'save_link'],
+  vibecoder: ['search_knowledge', 'define_term', 'search_lexicon', 'list_groups', 'list_releases', 'get_document', 'search_with_documents', 'save_link', 'create_draft'],
 } as const;

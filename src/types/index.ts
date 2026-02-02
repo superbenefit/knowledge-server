@@ -1,20 +1,60 @@
-// Content model
+// Content model (spec section 3)
 export {
   ContentTypeSchema,
-  BaseSchema,
-  ArtifactSchema,
-  TagSchema,
-  ContentEntrySchema,
-  ARTIFACT_TYPES,
+  RESOURCE_TYPES,
+  STORY_TYPES,
   REFERENCE_TYPES,
+  DATA_TYPES,
   PATH_TYPE_MAP,
+  inferContentType,
+  // Base schema
+  FileSchema,
+  // Parent schemas
+  ReferenceSchema,
+  ResourceSchema,
+  StorySchema,
+  DataSchema,
+  // Reference type schemas
+  LinkSchema,
+  TagSchema,
+  // Resource type schemas
+  PatternSchema,
+  PracticeSchema,
+  PrimitiveSchema,
+  ProtocolSchema,
+  PlaybookSchema,
+  QuestionSchema,
+  // Story type schemas
+  StudySchema,
+  ArticleSchema,
+  // Data type schemas
+  PersonSchema,
+  GroupSchema,
+  ProjectSchema,
+  PlaceSchema,
+  GatheringSchema,
+  // Discriminated union
+  ContentSchema,
 } from './content';
 export type {
   ContentType,
-  BaseFrontmatter,
-  ArtifactFrontmatter,
+  FileFrontmatter,
+  ResourceFrontmatter,
+  StoryFrontmatter,
+  LinkFrontmatter,
   TagFrontmatter,
-  ContentEntry,
+  PatternFrontmatter,
+  PracticeFrontmatter,
+  PrimitiveFrontmatter,
+  ProtocolFrontmatter,
+  QuestionFrontmatter,
+  ArticleFrontmatter,
+  PersonFrontmatter,
+  GroupFrontmatter,
+  ProjectFrontmatter,
+  PlaceFrontmatter,
+  GatheringFrontmatter,
+  Content,
 } from './content';
 
 // Auth
@@ -31,7 +71,6 @@ export type { AccessTier, HatsRole, AuthProps } from './auth';
 export {
   ListParamsSchema,
   SearchParamsSchema,
-  PaginationMetaSchema,
   SearchResultSchema,
   ErrorResponseSchema,
   EntryResponseSchema,
@@ -41,16 +80,20 @@ export {
 export type {
   ListParams,
   SearchParams,
-  PaginationMeta,
   SearchResult,
   ErrorResponse,
 } from './api';
 
 // Storage
 export {
+  VECTORIZE_LIMITS,
   R2DocumentSchema,
   VectorizeMetadataSchema,
-  R2_KEYS,
+  truncateForMetadata,
+  generateId,
+  toR2Key,
+  extractIdFromKey,
+  extractContentTypeFromKey,
 } from './storage';
 export type { R2Document, VectorizeMetadata } from './storage';
 
@@ -64,20 +107,22 @@ export type { SyncParams, R2EventNotification, SyncStatus } from './sync';
 
 // MCP tool inputs
 export {
+  SearchFiltersSchema,
   SearchKnowledgeInputSchema,
   DefineTermInputSchema,
   SearchLexiconInputSchema,
   GetDocumentInputSchema,
-  AddTermInputSchema,
   SaveLinkInputSchema,
-  UpdateTermInputSchema,
+  SearchWithDocumentsInputSchema,
+  CreateDraftInputSchema,
 } from './mcp';
 export type {
+  SearchFilters,
   SearchKnowledgeInput,
   DefineTermInput,
   SearchLexiconInput,
   GetDocumentInput,
-  AddTermInput,
   SaveLinkInput,
-  UpdateTermInput,
+  SearchWithDocumentsInput,
+  CreateDraftInput,
 } from './mcp';
