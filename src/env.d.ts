@@ -7,6 +7,11 @@ declare namespace Cloudflare {
     GITHUB_CLIENT_ID: string;
     GITHUB_CLIENT_SECRET: string;
     COOKIE_ENCRYPTION_KEY: string;
+    GITHUB_TOKEN: string;
+    GITHUB_WEBHOOK_SECRET: string;
+    GITHUB_REPO: string;
+    MAINNET_RPC_URL: string;
+    OPTIMISM_RPC_URL: string;
   }
 }
 
@@ -15,4 +20,9 @@ interface Env {
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
   COOKIE_ENCRYPTION_KEY: string;
+  GITHUB_TOKEN: string;
+  GITHUB_WEBHOOK_SECRET: string;
+  GITHUB_REPO: string;
+  MAINNET_RPC_URL: string;
+  OPTIMISM_RPC_URL: string;
 }

@@ -11,7 +11,7 @@ Building an MCP server + public REST API for SuperBenefit DAO that:
 
 ## Technical Stack
 
-- Cloudflare Workers + Durable Objects (McpAgent)
+- Cloudflare Workers (stateless `createMcpHandler`)
 - Hono for HTTP routing + REST API
 - @hono/zod-openapi for OpenAPI generation
 - workers-oauth-provider for OAuth wrapper
@@ -31,11 +31,12 @@ Building an MCP server + public REST API for SuperBenefit DAO that:
 - Import Cloudflare types from 'cloudflare:workers'
 - Environment accessed via second arg: `fetch(req, env)`
 
-### McpAgent Pattern
+### MCP Server Pattern
 
-- Declare `server` as class property, NOT in constructor
-- Register tools in `async init()` method
-- Use proper typing: `McpAgent<Env, State, Props>`
+- Use stateless `createMcpHandler` from `agents/mcp` (NOT McpAgent Durable Object)
+- Register tools via `server.tool()` in the init callback
+- Use `requireTier()` wrapper for tier-gated tool permissions
+- Current `src/index.ts` still uses McpAgent (legacy template) — will be replaced in Integration phase
 
 ### Common Mistakes to Avoid
 
@@ -49,20 +50,30 @@ Building an MCP server + public REST API for SuperBenefit DAO that:
 
 ```
 src/
-├── index.ts              # Main Hono router
+├── index.ts              # Main router
+├── types/
+│   ├── index.ts          # Re-exports all types
+│   ├── content.ts        # Content schemas, PATH_TYPE_MAP, inferContentType
+│   ├── auth.ts           # AuthProps, AccessTier, HATS_CONFIG
+│   ├── api.ts            # API request/response types
+│   ├── storage.ts        # R2Document, VectorizeMetadata
+│   ├── sync.ts           # SyncParams, R2EventNotification
+│   └── mcp.ts            # MCP tool input schemas
 ├── auth/
 │   ├── siwe-handler.ts   # SIWE verification
 │   ├── hats.ts           # Hats Protocol checks
 │   └── ens.ts            # ENS resolution
 ├── api/                  # Public REST API
 │   ├── routes.ts         # Hono + OpenAPI routes
-│   └── schemas.ts        # Zod schemas (shared with MCP)
-├── server/
-│   ├── knowledge.ts      # McpAgent
-│   └── tools/            # MCP tool implementations
+│   └── schemas.ts        # Zod schemas
+├── mcp/
+│   ├── server.ts         # createMcpHandler setup
+│   ├── tools.ts          # MCP tool registrations
+│   ├── resources.ts      # MCP resource definitions
+│   └── prompts.ts        # MCP prompt templates
 ├── sync/
-│   ├── workflow.ts       # GitHub sync workflow
-│   └── schemas.ts        # Content schemas
+│   ├── workflow.ts        # GitHub sync workflow
+│   └── parser.ts          # Markdown parsing
 ├── consumers/
 │   └── vectorize.ts      # Queue consumer
 └── retrieval/
@@ -167,7 +178,7 @@ curl -I -X OPTIONS http://localhost:8788/api/v1/entries \
 
 ## Important Constraints
 
-- `compatibility_date`: "2025-03-07" or later for McpAgent
+- `compatibility_date`: "2025-03-07" or later for agents SDK
 - Use `viem/siwe`, NOT standalone `siwe` package
 - Queue consumers: per-message `msg.ack()`, not `batch.ackAll()`
 - R2 events have no ordering guarantee — use idempotent operations
@@ -184,6 +195,6 @@ When compacting, preserve:
 
 ## Specification Reference
 
-Full spec at: `docs/spec-v0.8.md`
+Full spec at: `docs/spec.md` (v0.11)
 
-Implementation plan at: `docs/implementation-plan-v2.md`
+Implementation plan at: `docs/plan.md` (v2.6)
