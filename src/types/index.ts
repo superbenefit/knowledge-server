@@ -57,7 +57,7 @@ export type {
   Content,
 } from './content';
 
-// Auth
+// Auth (spec section 2)
 export {
   AccessTierSchema,
   HatsRoleSchema,
@@ -67,24 +67,28 @@ export {
 } from './auth';
 export type { AccessTier, HatsRole, AuthProps } from './auth';
 
-// API
+// API (spec sections 6, 8)
 export {
+  SearchFiltersSchema,
   ListParamsSchema,
   SearchParamsSchema,
   SearchResultSchema,
+  RerankResultSchema,
   ErrorResponseSchema,
   EntryResponseSchema,
   EntryListResponseSchema,
   SearchResponseSchema,
 } from './api';
 export type {
+  SearchFilters,
   ListParams,
   SearchParams,
   SearchResult,
+  RerankResult,
   ErrorResponse,
 } from './api';
 
-// Storage
+// Storage (spec section 4)
 export {
   VECTORIZE_LIMITS,
   R2DocumentSchema,
@@ -96,33 +100,3 @@ export {
   extractContentTypeFromKey,
 } from './storage';
 export type { R2Document, VectorizeMetadata } from './storage';
-
-// Sync
-export {
-  SyncParamsSchema,
-  R2EventNotificationSchema,
-  SyncStatusSchema,
-} from './sync';
-export type { SyncParams, R2EventNotification, SyncStatus } from './sync';
-
-// MCP tool inputs
-export {
-  SearchFiltersSchema,
-  SearchKnowledgeInputSchema,
-  DefineTermInputSchema,
-  SearchLexiconInputSchema,
-  GetDocumentInputSchema,
-  SaveLinkInputSchema,
-  SearchWithDocumentsInputSchema,
-  CreateDraftInputSchema,
-} from './mcp';
-export type {
-  SearchFilters,
-  SearchKnowledgeInput,
-  DefineTermInput,
-  SearchLexiconInput,
-  GetDocumentInput,
-  SaveLinkInput,
-  SearchWithDocumentsInput,
-  CreateDraftInput,
-} from './mcp';

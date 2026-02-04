@@ -3,6 +3,7 @@
 **Issue**: #1
 **Phase**: complete
 **Started**: 2026-01-31
+**Redone**: 2026-02-03
 
 ## Goal
 
@@ -10,52 +11,38 @@ Define all shared Zod schemas and TypeScript types used across the knowledge ser
 
 ## Approach
 
-Create `src/types/` directory with one file per domain. All schemas use Zod v4 (4.3.6) with .openapi() annotations for REST API compatibility via @hono/zod-openapi (1.2.0, confirmed Zod v4 peer dep). Export inferred TypeScript types alongside every Zod schema. Barrel export everything from index.ts.
+Create `src/types/` with four domain files per plan v2.6: content.ts, auth.ts, api.ts, storage.ts. Sync and MCP tool schemas are deferred to their respective packages (Package 4 and Integration). All schemas use Zod v4 with .openapi() annotations. Barrel export from index.ts.
 
 ## Implementation Steps
 
 ### Phase 1: Content schemas
-- [x] 1.1: Create src/types/content.ts — ContentType enum, BaseSchema, ArtifactSchema, TagSchema, ContentEntry, ContentMetadata
+- [x] 1.1: Create src/types/content.ts — 20-type ContentTypeSchema, PATH_TYPE_MAP, inferContentType, FileSchema base, parent schemas, 16 concrete type schemas, ContentSchema discriminated union
   - Files: src/types/content.ts
-  - Depends: none
 
 ### Phase 2: Auth schemas
-- [x] 2.1: Create src/types/auth.ts — AccessTier, HatsRole, AuthProps, HatsConfig constants
+- [x] 2.1: Create src/types/auth.ts — AccessTier, HatsRole, AuthProps, HATS_CONFIG, TIER_TOOLS
   - Files: src/types/auth.ts
-  - Depends: none
 
 ### Phase 3: API schemas
-- [x] 3.1: Create src/types/api.ts — SearchParams, ListParams, APIResponse, ErrorResponse, PaginatedResponse, SearchResult
+- [x] 3.1: Create src/types/api.ts — SearchFilters, ListParams, SearchParams, SearchResult, RerankResult, ErrorResponse, EntryResponse, EntryListResponse, SearchResponse
   - Files: src/types/api.ts
-  - Depends: 1.1 (references ContentEntry)
 
 ### Phase 4: Storage schemas
-- [x] 4.1: Create src/types/storage.ts — R2Document, VectorizeRecordMetadata, KVNamespaces
+- [x] 4.1: Create src/types/storage.ts — R2Document, VectorizeMetadata, VECTORIZE_LIMITS, truncateForMetadata, generateId, toR2Key, extractIdFromKey, extractContentTypeFromKey
   - Files: src/types/storage.ts
-  - Depends: 1.1 (references content schemas)
 
-### Phase 5: Sync schemas
-- [x] 5.1: Create src/types/sync.ts — SyncParams, R2EventNotification, SyncStatus
-  - Files: src/types/sync.ts
-  - Depends: none
-
-### Phase 6: MCP tool schemas
-- [x] 6.1: Create src/types/mcp.ts — Tool input/output schemas for all 7 MCP tools
-  - Files: src/types/mcp.ts
-  - Depends: 1.1, 3.1 (references content and API schemas)
-
-### Phase 7: Barrel export + validation
-- [x] 7.1: Create src/types/index.ts — re-export all schemas and types
+### Phase 5: Barrel export + validation
+- [x] 5.1: Create src/types/index.ts — re-export content, auth, api, storage only
   - Files: src/types/index.ts
-  - Depends: 1.1, 2.1, 3.1, 4.1, 5.1, 6.1
-- [x] 7.2: Run npm run type-check and fix any errors
-  - Depends: 7.1
-- [x] 7.3: Run /validate to check Cloudflare best practices
-  - Depends: 7.2
+- [x] 5.2: Run npm run type-check — zero errors
+- [x] 5.3: Run /validate — types pass, index.ts legacy issues acknowledged
 
-## Current Step
+## Scope Changes (v0.11 redo)
 
-Complete. PR #8 merged, issue #1 closed.
+- Removed src/types/sync.ts — deferred to Package 4 (Sync Workflow)
+- Removed src/types/mcp.ts — deferred to Integration phase
+- Moved SearchFiltersSchema from mcp.ts to api.ts
+- Added RerankResultSchema to api.ts (was missing)
 
 ## Blockers
 
@@ -65,6 +52,6 @@ None.
 
 - [x] All schemas defined with Zod v4
 - [x] npm run type-check passes
-- [x] Schemas align with spec.md definitions
+- [x] Schemas align with spec v0.11
 - [x] Types compatible with Cloudflare bindings (R2, Vectorize, KV)
-- [x] /validate passes
+- [x] /validate passes for types (index.ts legacy template issues are out of scope)

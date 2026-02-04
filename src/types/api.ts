@@ -1,6 +1,17 @@
 import { z } from '@hono/zod-openapi';
 import { ContentTypeSchema } from './content';
-import { R2DocumentSchema } from './storage';
+import { R2DocumentSchema, VectorizeMetadataSchema } from './storage';
+
+// Shared search filters used by REST API and MCP tools (spec section 6.2)
+export const SearchFiltersSchema = z.object({
+  contentType: ContentTypeSchema.optional(),
+  group: z.string().optional(),
+  release: z.string().optional(),
+  status: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+});
+
+export type SearchFilters = z.infer<typeof SearchFiltersSchema>;
 
 // List entries query params (spec section 8.2)
 export const ListParamsSchema = z
@@ -41,6 +52,18 @@ export const SearchResultSchema = z
   .openapi('SearchResult');
 
 export type SearchResult = z.infer<typeof SearchResultSchema>;
+
+// Reranked search result (spec section 6.3)
+export const RerankResultSchema = z
+  .object({
+    id: z.string(),
+    score: z.number(),
+    rerankScore: z.number(),
+    metadata: VectorizeMetadataSchema,
+  })
+  .openapi('RerankResult');
+
+export type RerankResult = z.infer<typeof RerankResultSchema>;
 
 // Error response envelope (spec section 8)
 export const ErrorResponseSchema = z
