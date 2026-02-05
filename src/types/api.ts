@@ -48,6 +48,7 @@ export const SearchResultSchema = z
     description: z.string().optional(),
     score: z.number(),
     rerankScore: z.number().optional(),
+    document: R2DocumentSchema.optional(),
   })
   .openapi('SearchResult');
 
