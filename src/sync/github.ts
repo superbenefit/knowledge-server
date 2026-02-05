@@ -75,7 +75,12 @@ export async function fetchFileContent(
   repo: string,
   token: string,
 ): Promise<string> {
-  const url = `https://api.github.com/repos/${repo}/contents/${encodeURIComponent(filePath)}?ref=${commitSha}`;
+  // Encode each path segment individually — slashes must remain literal
+  const encodedPath = filePath
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  const url = `https://api.github.com/repos/${repo}/contents/${encodedPath}?ref=${commitSha}`;
   const resp = await fetch(url, {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -95,7 +100,9 @@ export async function fetchFileContent(
   const data = (await resp.json()) as { content: string; encoding: string };
 
   if (data.encoding === 'base64') {
-    return atob(data.content);
+    // GitHub returns base64 with embedded newlines (line-wrapped);
+    // atob() does not tolerate whitespace, so strip it first
+    return atob(data.content.replace(/\s/g, ''));
   }
 
   // Shouldn't happen for files under 1MB, but handle gracefully

@@ -1,5 +1,5 @@
 import { parse as parseYaml } from 'yaml';
-import { FileSchema, inferContentType } from '../types/content';
+import { ContentTypeSchema, FileSchema, inferContentType } from '../types/content';
 import type { ParsedMarkdown } from '../types/sync';
 
 const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
@@ -76,8 +76,10 @@ export function resolveContentType(
   filePath: string,
 ): ReturnType<typeof inferContentType> {
   if (typeof frontmatter.type === 'string') {
-    // If frontmatter specifies a type, trust it (it was validated by the schema)
-    return frontmatter.type as ReturnType<typeof inferContentType>;
+    const parsed = ContentTypeSchema.safeParse(frontmatter.type);
+    if (parsed.success) {
+      return parsed.data;
+    }
   }
   return inferContentType(filePath);
 }
