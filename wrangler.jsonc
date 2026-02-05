@@ -7,76 +7,57 @@
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
-
 	/**
 	 * Secrets (set via `npx wrangler secret put <NAME>`):
 	 *   GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, COOKIE_ENCRYPTION_KEY,
 	 *   GITHUB_WEBHOOK_SECRET, GITHUB_TOKEN,
 	 *   OPTIMISM_RPC_URL, MAINNET_RPC_URL, WALLETCONNECT_PROJECT_ID
 	 */
-
-	"migrations": [
+	"kv_namespaces": [
+		{ "binding": "OAUTH_KV", "id": "3f72469f3ff84c96a01e8aff2f69447d" },
+		{ "binding": "NONCE_KV", "id": "490f98eae91d49b4bd4852dc72ea38bb" },
+		{ "binding": "ROLE_CACHE", "id": "e2e853c9a14d4aecbe32f2738a784ca3" },
+		{ "binding": "ENS_CACHE", "id": "2c1a4e9792644457b8ca7b98dfb412d7" },
+		{ "binding": "RERANK_CACHE", "id": "bcfbd064dc2b451dbd05a85410b33196" },
+		{ "binding": "SYNC_STATE", "id": "6b98b7a4d10746cf90cbfcdc559597ee" }
+	],
+	"workflows": [
 		{
-			"new_sqlite_classes": [
-				"SuperBenefitKnowledgeMCP"
-			],
-			"tag": "v1"
+			"name": "knowledge-sync-workflow",
+			"binding": "SYNC_WORKFLOW",
+			"class_name": "KnowledgeSyncWorkflow"
 		}
 	],
-
-	"durable_objects": {
-		"bindings": [
-			{
-				"class_name": "SuperBenefitKnowledgeMCP",
-				"name": "MCP_OBJECT"
-			}
-		]
-	},
-
-	/**
-	 * Deferred bindings — uncomment and populate IDs as each package creates its resources.
-	 *
-	 * "kv_namespaces": [
-	 *   { "binding": "OAUTH_KV", "id": "<OAUTH_KV_ID>" },
-	 *   { "binding": "NONCE_KV", "id": "<NONCE_KV_ID>" },
-	 *   { "binding": "ROLE_CACHE", "id": "<ROLE_CACHE_ID>" },
-	 *   { "binding": "ENS_CACHE", "id": "<ENS_CACHE_ID>" },
-	 *   { "binding": "RERANK_CACHE", "id": "<RERANK_CACHE_ID>" },
-	 *   { "binding": "SYNC_STATE", "id": "<SYNC_STATE_ID>" }
-	 * ],
-	 *
-	 * "r2_buckets": [
-	 *   { "binding": "KNOWLEDGE", "bucket_name": "superbenefit-knowledge" }
-	 * ],
-	 *
-	 * "vectorize": [
-	 *   { "binding": "VECTORIZE", "index_name": "superbenefit-knowledge-idx" }
-	 * ],
-	 *
-	 * "queues": {
-	 *   "consumers": [
-	 *     { "queue": "superbenefit-knowledge-sync", "max_batch_size": 10, "max_batch_timeout": 30 }
-	 *   ]
-	 * },
-	 *
-	 * "workflows": [
-	 *   {
-	 *     "name": "knowledge-sync-workflow",
-	 *     "binding": "SYNC_WORKFLOW",
-	 *     "class_name": "KnowledgeSyncWorkflow"
-	 *   }
-	 * ],
-	 */
-
 	"ai": {
 		"binding": "AI"
 	},
-
 	"observability": {
 		"enabled": true
 	},
-
 	"dev": {
 		"port": 8788
+	},
+	"vectorize": [
+		{
+			"binding": "VECTORIZE",
+			"index_name": "superbenefit-knowledge-idx",
+			"remote": true
+		}
+	],
+	"r2_buckets": [
+		{
+			"bucket_name": "superbenefit-knowledge",
+			"binding": "KNOWLEDGE",
+			"remote": true
+		}
+	],
+	"queues": {
+		"consumers": [
+			{
+				"queue": "superbenefit-knowledge-sync",
+				"max_batch_size": 10,
+				"max_batch_timeout": 30
+			}
+		]
 	}
 }

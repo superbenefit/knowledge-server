@@ -1,110 +1,42 @@
-import OAuthProvider from "@cloudflare/workers-oauth-provider";
-import { Hono } from "hono";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { McpAgent } from "agents/mcp";
-import { Octokit } from "octokit";
-import { z } from "zod";
-import { GitHubHandler } from "./github-handler";
-import { api } from "./api/routes";
+/**
+ * Main entry point for the SuperBenefit Knowledge Server.
+ *
+ * Routes:
+ * - /api/v1/* — Public REST API (no auth)
+ * - /mcp/* — MCP server (OAuth/SIWE protected)
+ * - /authorize, /token, /register — OAuth endpoints
+ * - /siwe/* — SIWE authentication flow
+ */
+
+import OAuthProvider from '@cloudflare/workers-oauth-provider';
+import { Hono } from 'hono';
+import { GitHubHandler } from './github-handler';
+import { api } from './api/routes';
+import { McpHandler } from './mcp';
+import { handleVectorizeQueue } from './consumers/vectorize';
 
 // Re-export workflow class so Cloudflare can discover it via wrangler.jsonc class_name
-export { KnowledgeSyncWorkflow } from "./sync/workflow";
+export { KnowledgeSyncWorkflow } from './sync/workflow';
 
-// Context from the auth process, encrypted & stored in the auth token
-// and provided to the DurableMCP as this.props
-type Props = {
-	login: string;
-	name: string;
-	email: string;
-	accessToken: string;
-};
+// ---------------------------------------------------------------------------
+// OAuth Provider — wraps MCP handler with OAuth/SIWE auth
+// ---------------------------------------------------------------------------
 
-const ALLOWED_USERNAMES = new Set<string>([
-	// Add GitHub usernames of users who should have access to the image generation tool
-	// For example: 'yourusername', 'coworkerusername'
-]);
-
-export class SuperBenefitKnowledgeMCP extends McpAgent<Env, Record<string, never>, Props> {
-	server = new McpServer({
-		name: "Github OAuth Proxy Demo",
-		version: "1.0.0",
-	});
-
-	async init() {
-		// Hello, world!
-		this.server.tool(
-			"add",
-			"Add two numbers the way only MCP can",
-			{ a: z.number(), b: z.number() },
-			async ({ a, b }) => ({
-				content: [{ text: String(a + b), type: "text" }],
-			}),
-		);
-
-		// Use the upstream access token to facilitate tools
-		this.server.tool(
-			"userInfoOctokit",
-			"Get user info from GitHub, via Octokit",
-			{},
-			async () => {
-				const octokit = new Octokit({ auth: this.props!.accessToken });
-				return {
-					content: [
-						{
-							text: JSON.stringify(await octokit.rest.users.getAuthenticated()),
-							type: "text",
-						},
-					],
-				};
-			},
-		);
-
-		// Dynamically add tools based on the user's login. In this case, I want to limit
-		// access to my Image Generation tool to just me
-		if (ALLOWED_USERNAMES.has(this.props!.login)) {
-			this.server.tool(
-				"generateImage",
-				"Generate an image using the `flux-1-schnell` model. Works best with 8 steps.",
-				{
-					prompt: z
-						.string()
-						.describe("A text description of the image you want to generate."),
-					steps: z
-						.number()
-						.min(4)
-						.max(8)
-						.default(4)
-						.describe(
-							"The number of diffusion steps; higher values can improve quality but take longer. Must be between 4 and 8, inclusive.",
-						),
-				},
-				async ({ prompt, steps }) => {
-					const response = await this.env.AI.run("@cf/black-forest-labs/flux-1-schnell", {
-						prompt,
-						steps,
-					});
-
-					return {
-						content: [{ data: response.image!, mimeType: "image/jpeg", type: "image" }],
-					};
-				},
-			);
-		}
-	}
-}
+// Type assertions needed because OAuthProvider uses generic `unknown` env
+// while our handlers are typed with specific Env binding.
+// The handlers implement the required fetch signature but with stricter env types.
+const oauthProvider = new OAuthProvider({
+  apiHandler: McpHandler as { fetch: ExportedHandlerFetchHandler },
+  apiRoute: '/mcp',
+  authorizeEndpoint: '/authorize',
+  clientRegistrationEndpoint: '/register',
+  defaultHandler: GitHubHandler as { fetch: ExportedHandlerFetchHandler },
+  tokenEndpoint: '/token',
+});
 
 // ---------------------------------------------------------------------------
 // Main Hono app — mounts public REST API and delegates MCP/OAuth routes
 // ---------------------------------------------------------------------------
-
-const oauthProvider = new OAuthProvider({
-	apiHandler: SuperBenefitKnowledgeMCP.serve("/mcp"),
-	apiRoute: "/mcp",
-	authorizeEndpoint: "/authorize",
-	clientRegistrationEndpoint: "/register",
-	defaultHandler: GitHubHandler as any,
-	tokenEndpoint: "/token",
-});
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -114,4 +46,11 @@ app.route('/api/v1', api);
 // MCP server + OAuth endpoints — delegate to OAuthProvider
 app.all('*', (c) => oauthProvider.fetch(c.req.raw, c.env, c.executionCtx));
 
-export default app;
+// ---------------------------------------------------------------------------
+// Export Worker module
+// ---------------------------------------------------------------------------
+
+export default {
+  fetch: app.fetch,
+  queue: handleVectorizeQueue,
+};

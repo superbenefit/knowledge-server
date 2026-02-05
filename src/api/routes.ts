@@ -2,6 +2,7 @@ import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import { cors } from 'hono/cors';
 import { toR2Key } from '../types/storage';
 import type { R2Document } from '../types/storage';
+import { searchKnowledge } from '../retrieval';
 import {
   EntryParamsSchema,
   ListQuerySchema,
@@ -167,11 +168,19 @@ const searchRoute = createRoute({
 });
 
 api.openapi(searchRoute, async (c) => {
-  // TODO: Wire up retrieval module (Package 2) when available.
-  // For now return empty results to satisfy the route contract.
-  const _params = c.req.valid('query');
+  const { q, contentType, group, release, limit } = c.req.valid('query');
 
-  return c.json({ results: [] }, 200, CACHE_HEADERS);
+  const results = await searchKnowledge(
+    q,
+    { contentType, group, release },
+    {},
+    c.env,
+  );
+
+  // Apply limit to results (Vectorize already limits to 20, this allows smaller sets)
+  const limitedResults = results.slice(0, limit);
+
+  return c.json({ results: limitedResults }, 200, CACHE_HEADERS);
 });
 
 // ---------------------------------------------------------------------------

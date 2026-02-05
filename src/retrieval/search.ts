@@ -1,5 +1,5 @@
 import type { SearchFilters } from '../types';
-import { VECTORIZE_LIMITS } from '../types';
+import { VECTORIZE_LIMITS, VECTORIZE_NAMESPACE } from '../types';
 
 /**
  * Generate an embedding vector for a query string using BGE base model.
@@ -84,6 +84,7 @@ export async function searchWithFilters(
     topK: VECTORIZE_LIMITS.TOP_K_WITH_METADATA,
     returnMetadata: 'all',
     filter,
+    namespace: VECTORIZE_NAMESPACE,
   });
 
   return results.matches;

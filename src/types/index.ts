@@ -91,6 +91,7 @@ export type {
 // Storage (spec section 4)
 export {
   VECTORIZE_LIMITS,
+  VECTORIZE_NAMESPACE,
   R2DocumentSchema,
   VectorizeMetadataSchema,
   truncateForMetadata,

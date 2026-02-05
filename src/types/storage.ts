@@ -14,6 +14,10 @@ export const VECTORIZE_LIMITS = {
   MAX_METADATA_INDEXES: 10,
 } as const;
 
+// Vectorize namespace for multi-tenant support (spec section 4.3)
+// Allows future expansion to other DAOs/content sources
+export const VECTORIZE_NAMESPACE = 'superbenefit' as const;
+
 // ---------------------------------------------------------------------------
 // R2 document shape (spec section 4.1)
 // ---------------------------------------------------------------------------

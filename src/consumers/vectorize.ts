@@ -10,6 +10,7 @@ import {
   extractIdFromKey,
   truncateForMetadata,
   toR2Key,
+  VECTORIZE_NAMESPACE,
 } from '../types/storage';
 
 // ---------------------------------------------------------------------------
@@ -139,6 +140,7 @@ export async function updateVectorize(
       id: doc.id,
       values,
       metadata,
+      namespace: VECTORIZE_NAMESPACE,
     },
   ]);
 }
