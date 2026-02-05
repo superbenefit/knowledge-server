@@ -1,6 +1,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "knowledge-server",
+	"account_id": "c36c9a59f6251430c514f4fff55c3f4a",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-03-10",
 	"compatibility_flags": [
@@ -32,36 +33,40 @@
 		]
 	},
 
-	"kv_namespaces": [
-		{ "binding": "OAUTH_KV", "id": "<OAUTH_KV_ID>" },
-		{ "binding": "NONCE_KV", "id": "<NONCE_KV_ID>" },
-		{ "binding": "ROLE_CACHE", "id": "<ROLE_CACHE_ID>" },
-		{ "binding": "ENS_CACHE", "id": "<ENS_CACHE_ID>" },
-		{ "binding": "RERANK_CACHE", "id": "<RERANK_CACHE_ID>" },
-		{ "binding": "SYNC_STATE", "id": "<SYNC_STATE_ID>" }
-	],
-
-	"r2_buckets": [
-		{ "binding": "KNOWLEDGE", "bucket_name": "superbenefit-knowledge" }
-	],
-
-	"vectorize": [
-		{ "binding": "VECTORIZE", "index_name": "superbenefit-knowledge-idx" }
-	],
-
-	"queues": {
-		"consumers": [
-			{ "queue": "superbenefit-knowledge-sync", "max_batch_size": 10, "max_batch_timeout": 30 }
-		]
-	},
-
-	"workflows": [
-		{
-			"name": "knowledge-sync-workflow",
-			"binding": "SYNC_WORKFLOW",
-			"class_name": "KnowledgeSyncWorkflow"
-		}
-	],
+	/**
+	 * Deferred bindings — uncomment and populate IDs as each package creates its resources.
+	 *
+	 * "kv_namespaces": [
+	 *   { "binding": "OAUTH_KV", "id": "<OAUTH_KV_ID>" },
+	 *   { "binding": "NONCE_KV", "id": "<NONCE_KV_ID>" },
+	 *   { "binding": "ROLE_CACHE", "id": "<ROLE_CACHE_ID>" },
+	 *   { "binding": "ENS_CACHE", "id": "<ENS_CACHE_ID>" },
+	 *   { "binding": "RERANK_CACHE", "id": "<RERANK_CACHE_ID>" },
+	 *   { "binding": "SYNC_STATE", "id": "<SYNC_STATE_ID>" }
+	 * ],
+	 *
+	 * "r2_buckets": [
+	 *   { "binding": "KNOWLEDGE", "bucket_name": "superbenefit-knowledge" }
+	 * ],
+	 *
+	 * "vectorize": [
+	 *   { "binding": "VECTORIZE", "index_name": "superbenefit-knowledge-idx" }
+	 * ],
+	 *
+	 * "queues": {
+	 *   "consumers": [
+	 *     { "queue": "superbenefit-knowledge-sync", "max_batch_size": 10, "max_batch_timeout": 30 }
+	 *   ]
+	 * },
+	 *
+	 * "workflows": [
+	 *   {
+	 *     "name": "knowledge-sync-workflow",
+	 *     "binding": "SYNC_WORKFLOW",
+	 *     "class_name": "KnowledgeSyncWorkflow"
+	 *   }
+	 * ],
+	 */
 
 	"ai": {
 		"binding": "AI"
