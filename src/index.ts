@@ -1,9 +1,11 @@
 import OAuthProvider from "@cloudflare/workers-oauth-provider";
+import { Hono } from "hono";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
 import { Octokit } from "octokit";
 import { z } from "zod";
 import { GitHubHandler } from "./github-handler";
+import { api } from "./api/routes";
 
 // Context from the auth process, encrypted & stored in the auth token
 // and provided to the DurableMCP as this.props
@@ -88,7 +90,11 @@ export class SuperBenefitKnowledgeMCP extends McpAgent<Env, Record<string, never
 	}
 }
 
-export default new OAuthProvider({
+// ---------------------------------------------------------------------------
+// Main Hono app — mounts public REST API and delegates MCP/OAuth routes
+// ---------------------------------------------------------------------------
+
+const oauthProvider = new OAuthProvider({
 	apiHandler: SuperBenefitKnowledgeMCP.serve("/mcp"),
 	apiRoute: "/mcp",
 	authorizeEndpoint: "/authorize",
@@ -96,3 +102,13 @@ export default new OAuthProvider({
 	defaultHandler: GitHubHandler as any,
 	tokenEndpoint: "/token",
 });
+
+const app = new Hono<{ Bindings: Env }>();
+
+// Public REST API (no auth required)
+app.route('/api/v1', api);
+
+// MCP server + OAuth endpoints — delegate to OAuthProvider
+app.all('*', (c) => oauthProvider.fetch(c.req.raw, c.env, c.executionCtx));
+
+export default app;
