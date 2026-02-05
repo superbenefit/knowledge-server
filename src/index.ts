@@ -5,6 +5,9 @@ import { Octokit } from "octokit";
 import { z } from "zod";
 import { GitHubHandler } from "./github-handler";
 
+// Re-export workflow class so Cloudflare can discover it via wrangler.jsonc class_name
+export { KnowledgeSyncWorkflow } from "./sync/workflow";
+
 // Context from the auth process, encrypted & stored in the auth token
 // and provided to the DurableMCP as this.props
 type Props = {
