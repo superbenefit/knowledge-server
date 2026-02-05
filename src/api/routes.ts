@@ -2,7 +2,6 @@ import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import { cors } from 'hono/cors';
 import { toR2Key } from '../types/storage';
 import type { R2Document } from '../types/storage';
-import type { ContentType } from '../types/content';
 import {
   EntryParamsSchema,
   ListQuerySchema,
@@ -18,6 +17,15 @@ import {
 // ---------------------------------------------------------------------------
 
 export const api = new OpenAPIHono<{ Bindings: Env }>();
+
+// Global error handler (spec section 10)
+api.onError((err, c) => {
+  console.error('API Error:', err);
+  return c.json(
+    { error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' } },
+    500,
+  );
+});
 
 // CORS middleware — public read-only API
 api.use(
@@ -59,23 +67,35 @@ api.openapi(listEntriesRoute, async (c) => {
   // Build R2 list prefix based on contentType filter
   const prefix = contentType ? `content/${contentType}/` : 'content/';
 
-  const listed = await c.env.KNOWLEDGE.list({ prefix, limit: 1000 });
+  // Collect all R2 object keys, handling truncated listings via cursor
+  const allObjects: R2Object[] = [];
+  let cursor: string | undefined;
+  do {
+    const listed = await c.env.KNOWLEDGE.list({
+      prefix,
+      limit: 1000,
+      ...(cursor ? { cursor } : {}),
+    });
+    allObjects.push(...listed.objects);
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
 
-  // Fetch documents and apply filters
-  let entries: R2Document[] = [];
+  // Batch-fetch documents in parallel
+  const docs = await Promise.all(
+    allObjects.map(async (obj): Promise<R2Document | null> => {
+      const object = await c.env.KNOWLEDGE.get(obj.key);
+      if (!object) return null;
+      return object.json();
+    }),
+  );
 
-  for (const obj of listed.objects) {
-    const object = await c.env.KNOWLEDGE.get(obj.key);
-    if (!object) continue;
-
-    const doc: R2Document = await object.json();
-
-    // Apply optional filters
-    if (group && doc.metadata?.group !== group) continue;
-    if (release && doc.metadata?.release !== release) continue;
-
-    entries.push(doc);
-  }
+  // Filter out nulls and apply optional metadata filters
+  let entries = docs.filter((doc): doc is R2Document => {
+    if (!doc) return false;
+    if (group && doc.metadata?.group !== group) return false;
+    if (release && doc.metadata?.release !== release) return false;
+    return true;
+  });
 
   const total = entries.length;
 
@@ -114,7 +134,7 @@ const getEntryRoute = createRoute({
 api.openapi(getEntryRoute, async (c) => {
   const { contentType, id } = c.req.valid('param');
 
-  const key = toR2Key(contentType as ContentType, id);
+  const key = toR2Key(contentType, id);
   const object = await c.env.KNOWLEDGE.get(key);
 
   if (!object) {
