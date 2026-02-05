@@ -8,7 +8,6 @@
 import type { VectorizeMetadata, R2Document } from '../types';
 import {
   extractIdFromKey,
-  extractContentTypeFromKey,
   truncateForMetadata,
   toR2Key,
 } from '../types/storage';
