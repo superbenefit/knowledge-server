@@ -71,7 +71,7 @@ function buildVectorFilter(
  * @param env - Cloudflare Worker environment bindings
  * @returns Array of VectorizeMatch results with metadata
  */
-export async function searchVectorize(
+export async function searchWithFilters(
   query: string,
   filters: SearchFilters,
   env: Env,

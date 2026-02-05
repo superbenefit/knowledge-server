@@ -1,38 +1,36 @@
 # Package 2: Retrieval Module — Progress
 
-## Status: Complete
+## Status: Complete (audit pass)
 
-### Tasks
+### Files
 
-- [x] Research existing types, spec, and plan docs
-- [x] Create .project/3/ tracking files
-- [x] Implement `src/retrieval/search.ts`
-- [x] Implement `src/retrieval/rerank.ts`
-- [x] Implement `src/retrieval/index.ts`
-- [x] Verify TypeScript compiles (`npm run type-check` passes)
-- [x] Commit and push
+| File | Functions | Status |
+|------|-----------|--------|
+| `src/retrieval/search.ts` | `generateEmbedding()`, `searchWithFilters()` | Done |
+| `src/retrieval/rerank.ts` | `rerankResults()`, `hashQuery()` | Done |
+| `src/retrieval/fetch.ts` | `getDocuments()`, `getDocument()` | Done |
+| `src/retrieval/index.ts` | `searchKnowledge()` orchestrator + re-exports | Done |
+| `src/types/api.ts` | Added optional `document` field to `SearchResultSchema` | Done |
 
-### Implementation Summary
+### Audit Fixes Applied
 
-**search.ts** — Vectorize queries with metadata filters
-- `generateEmbedding()` — BGE base v1.5 embedding generation
-- `searchVectorize()` — Vectorize query with topK: 20, returnMetadata: 'all'
-- `buildVectorFilter()` — Converts SearchFilters to VectorizeVectorMetadataFilter
-- Supports contentType, group, release, status, tags filters
+1. **reranker `top_k`** — Changed from `matches.length` to constant `5` (spec §6.3)
+2. **`rerankResults()` signature** — Removed `limit` param to match spec `(query, matches, env)`
+3. **`searchVectorize()`** — Renamed to `searchWithFilters()` per spec §6.2
+4. **Missing `fetch.ts`** — Created with `getDocuments()` and `getDocument()` (spec §6.4)
+5. **`SearchResultSchema`** — Added optional `document?: R2Document` field (spec §6.5)
+6. **`searchKnowledge()` signature** — Changed from `(query, filters, limit, env)` to `(query, filters, options, env)` with `options.includeDocuments` (spec §6.5)
+7. **Three-stage flow** — Stage 3 (R2 document fetch) now implemented
 
-**rerank.ts** — Batch BGE reranker
-- `rerankResults()` — Single batch call to @cf/baai/bge-reranker-base
-- Sigmoid normalization of raw logits
-- Filters results with score >= 0.5
-- KV cache with 1-hour TTL using hash of query + match IDs
-- Uses metadata.content from Vectorize (no R2 fetch)
+### Spec Compliance
 
-**index.ts** — Orchestrator + re-exports
-- `searchKnowledge()` — Two-stage: vector search → rerank
-- Returns SearchResult[] with id, contentType, title, description, score, rerankScore
+All functions match spec v0.11 Section 6 signatures:
 
-### Notes
-
-- Added `@types/node` as devDependency to fix pre-existing TS2688 error
-- Used `'data' in result` narrowing for Cloudflare AI union type output
-- Null-checked optional `id`/`score` fields on reranker response items
+| Function | Spec Signature | Match |
+|----------|---------------|-------|
+| `generateEmbedding` | `(text, env) → Promise<number[]>` | Yes |
+| `searchWithFilters` | `(query, filters, env) → Promise<VectorizeMatch[]>` | Yes |
+| `rerankResults` | `(query, matches, env) → Promise<RerankResult[]>` | Yes |
+| `getDocuments` | `(results, env) → Promise<R2Document[]>` | Yes |
+| `getDocument` | `(contentType, id, env) → Promise<R2Document \| null>` | Yes |
+| `searchKnowledge` | `(query, filters, options, env) → Promise<SearchResult[]>` | Yes |
