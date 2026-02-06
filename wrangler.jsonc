@@ -8,13 +8,10 @@
 		"nodejs_compat"
 	],
 	/**
-	 * Secrets (set via `npx wrangler secret put <NAME>`):
-	 *   GITHUB_WEBHOOK_SECRET, GITHUB_TOKEN, GITHUB_REPO,
-	 *   OPTIMISM_RPC_URL (dormant), MAINNET_RPC_URL (dormant)
+	 * Secrets (set via `npx wrangler secret put <n>`):
+	 *   GITHUB_WEBHOOK_SECRET, GITHUB_TOKEN, GITHUB_REPO
 	 */
 	"kv_namespaces": [
-		{ "binding": "ROLE_CACHE", "id": "e2e853c9a14d4aecbe32f2738a784ca3" },
-		{ "binding": "ENS_CACHE", "id": "2c1a4e9792644457b8ca7b98dfb412d7" },
 		{ "binding": "RERANK_CACHE", "id": "bcfbd064dc2b451dbd05a85410b33196" },
 		{ "binding": "SYNC_STATE", "id": "6b98b7a4d10746cf90cbfcdc559597ee" }
 	],

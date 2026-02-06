@@ -17,8 +17,6 @@ Building an MCP server + public REST API for SuperBenefit DAO that:
 - Cloudflare Workers (stateless `createMcpHandler`)
 - Hono for HTTP routing + REST API
 - @hono/zod-openapi for OpenAPI generation
-- viem/siwe for SIWE verification (dormant — Phase 3)
-- Hats Protocol SDK for role checking (dormant — Phase 3)
 - Vectorize for semantic search
 - R2 for content storage
 - Queues for event-driven indexing
@@ -60,7 +58,6 @@ server.tool('my_tool', 'description', { param: z.string() },
 
 ### Common Mistakes to Avoid
 
-- ❌ `npm install siwe` → ✅ Use `viem/siwe`
 - ❌ Per-document reranker calls → ✅ Batch API with `contexts` array
 - ❌ `batch.ackAll()` for queues → ✅ Per-message `msg.ack()`
 - ❌ `topK: 100` with full metadata → ✅ Max 20, use 'indexed' for more
@@ -74,17 +71,13 @@ src/
 ├── types/
 │   ├── index.ts          # Re-exports all types
 │   ├── content.ts        # Content schemas, PATH_TYPE_MAP, inferContentType
-│   ├── auth.ts           # AccessTier, AuthContext, Identity, HATS_CONFIG
+│   ├── auth.ts           # AccessTier, AuthContext, Identity
 │   ├── api.ts            # API request/response types
 │   ├── storage.ts        # R2Document, VectorizeMetadata
-│   ├── sync.ts           # SyncParams, R2EventNotification
-│   └── mcp.ts            # MCP tool input schemas
+│   └── sync.ts           # SyncParams, R2EventNotification
 ├── auth/
 │   ├── resolve.ts        # resolveAuthContext() — porch framework core
 │   ├── check.ts          # checkTierAccess() — tier comparison
-│   ├── siwe-handler.ts   # SIWE verification (dormant — Phase 3)
-│   ├── hats.ts           # Hats Protocol checks (dormant — Phase 3)
-│   ├── ens.ts            # ENS resolution (dormant — Phase 3)
 │   └── index.ts          # Exports
 ├── api/                  # Public REST API
 │   ├── routes.ts         # Hono + OpenAPI routes
@@ -112,7 +105,7 @@ src/
 ```typescript
 // src/auth/resolve.ts — always returns open tier in Phase 1
 export async function resolveAuthContext(_env: Env): Promise<AuthContext> {
-  return { identity: null, tier: 'open', address: null, roles: null };
+  return { identity: null, tier: 'open' };
 }
 
 // src/auth/check.ts — tier comparison
@@ -122,18 +115,6 @@ export function checkTierAccess(requiredTier: AccessTier, authContext: AuthConte
   }
   return { allowed: false, requiredTier, currentTier: authContext.tier };
 }
-```
-
-### Hats Protocol (Dormant — Phase 3)
-
-```typescript
-import { treeIdToHatId } from '@hatsprotocol/sdk-v1-core';
-
-// Chain: Optimism (10)
-// Contract: 0x3bc1A0Ad72417f2d411118085256fC53CBdDd137
-// Tree ID: 30
-// Contributor: path [3, 1] → tier 'members'
-// Member: path [3, 5] → tier 'members'
 ```
 
 ### Two-Stage Retrieval
@@ -203,7 +184,6 @@ curl -I -X OPTIONS http://localhost:8788/api/v1/entries \
 ## Important Constraints
 
 - `compatibility_date`: "2025-03-07" or later for agents SDK
-- Use `viem/siwe`, NOT standalone `siwe` package (dormant — Phase 3)
 - Queue consumers: per-message `msg.ack()`, not `batch.ackAll()`
 - R2 events have no ordering guarantee — use idempotent operations
 - Vectorize metadata indexes must be created BEFORE inserting vectors
@@ -219,8 +199,6 @@ When compacting, preserve:
 
 ## Specification Reference
 
-Full spec at: `docs/spec.md` (v0.12)
+Full spec at: `docs/spec.md` (v0.13)
 
-Implementation plan at: `docs/plan.md` (v2.7)
-
-Access control: `docs/porch-spec.md` (v0.14)
+Implementation plan at: `docs/plan.md` (v2.8)
