@@ -1,50 +1,85 @@
+/**
+ * Porch access control framework types.
+ *
+ * Phase 1: Only 'open' tier active
+ * Phase 2: + 'public' tier via Access for SaaS
+ * Phase 3: + 'members' tier via Hats/token gate
+ *
+ * See porch-spec.md v0.14 for full specification.
+ */
+
 import { z } from '@hono/zod-openapi';
 
-// Access tiers (spec section 2.8)
+// Access tiers ordered by privilege level
+export type AccessTier = 'open' | 'public' | 'members';
+
 export const AccessTierSchema = z
-  .enum(['public', 'member', 'vibecoder'])
+  .enum(['open', 'public', 'members'])
   .openapi('AccessTier');
 
-export type AccessTier = z.infer<typeof AccessTierSchema>;
+export const TIER_LEVEL: Record<AccessTier, number> = {
+  open: 0,
+  public: 1,
+  members: 2,
+};
 
-// Hats Protocol role check result (spec section 2.4)
+// Authenticated identity. Null for anonymous (Open tier) requests.
+export interface Identity {
+  userId: string;
+  name: string | null;
+  email: string | null;
+  provider: string; // "github" | "siwe"
+}
+
+export const IdentitySchema = z
+  .object({
+    userId: z.string(),
+    name: z.string().nullable(),
+    email: z.string().nullable(),
+    provider: z.string(),
+  })
+  .openapi('Identity');
+
+// Hats Protocol role information (dormant until Phase 3)
+export interface HatsRole {
+  hats: bigint[];
+  isMember: boolean;
+  isContributor: boolean;
+}
+
 export const HatsRoleSchema = z
   .object({
-    isContributor: z.boolean(),
+    hats: z.array(z.bigint()),
     isMember: z.boolean(),
-    tier: AccessTierSchema,
+    isContributor: z.boolean(),
   })
   .openapi('HatsRole');
 
-export type HatsRole = z.infer<typeof HatsRoleSchema>;
+// Resolved access context for a request
+export interface AuthContext {
+  identity: Identity | null;
+  tier: AccessTier;
+  address: `0x${string}` | null;
+  roles: HatsRole | null;
+}
 
-// Auth props attached to OAuth token (spec section 2.7)
-export const AuthPropsSchema = z
+export const AuthContextSchema = z
   .object({
-    address: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+    identity: IdentitySchema.nullable(),
     tier: AccessTierSchema,
-    roles: HatsRoleSchema,
-    ensName: z.string().nullable().optional(),
-    chainId: z.number(),
+    address: z.string().regex(/^0x[a-fA-F0-9]{40}$/).nullable(),
+    roles: HatsRoleSchema.nullable(),
   })
-  .openapi('AuthProps');
+  .openapi('AuthContext');
 
-export type AuthProps = z.infer<typeof AuthPropsSchema>;
-
-// Hats Protocol constants (spec section 2.4)
+// Hats Protocol constants (dormant until Phase 3)
 export const HATS_CONFIG = {
   chain: 10, // Optimism
+  chainId: 10,
   contract: '0x3bc1A0Ad72417f2d411118085256fC53CBdDd137' as const,
   treeId: 30,
   paths: {
     contributor: [3, 1] as const,
     member: [3, 5] as const,
   },
-} as const;
-
-// Tools available per tier (spec section 7.2)
-export const TIER_TOOLS: Record<AccessTier, readonly string[]> = {
-  public: ['search_knowledge', 'define_term', 'search_lexicon', 'list_groups', 'list_releases'],
-  member: ['search_knowledge', 'define_term', 'search_lexicon', 'list_groups', 'list_releases', 'get_document', 'search_with_documents', 'save_link'],
-  vibecoder: ['search_knowledge', 'define_term', 'search_lexicon', 'list_groups', 'list_releases', 'get_document', 'search_with_documents', 'save_link', 'create_draft'],
 } as const;

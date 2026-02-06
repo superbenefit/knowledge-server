@@ -1,7 +1,8 @@
 # SuperBenefit AI Tools Infrastructure Specification
 
-**Version:** 0.11  
-**Date:** February 1, 2026
+**Version:** 0.12  
+**Date:** February 6, 2026  
+**Access Control Reference:** `porch-spec.md` v0.14
 
 ---
 
@@ -9,7 +10,7 @@
 
 ### 1.1 Purpose
 
-This specification defines the architecture for SuperBenefit's AI tools infrastructure. The system enables DAO members to access curated AI tools through a unified MCP interface, backed by a synchronized knowledge base from GitHub and authenticated via Ethereum wallets. A public REST API provides unauthenticated read access for external consumers and web integrations.
+This specification defines the architecture for SuperBenefit's AI tools infrastructure. The system enables DAO members to access curated AI tools through a unified MCP interface, backed by a synchronized knowledge base from GitHub and authenticated via the porch access control framework. A public REST API provides unauthenticated read access for external consumers and web integrations.
 
 ### 1.2 Prerequisites
 
@@ -28,7 +29,7 @@ The knowledge server schemas depend on this structure being in place. See ontolo
 
 1. **Cloudflare-native** — No containers, Kubernetes, or external orchestration
 2. **Single connection point** — Members configure one URL, get all tools
-3. **Ethereum-native identity** — SIWE authentication, Hats Protocol authorization
+3. **Porch access control** — Three-tier framework: Open → Public → Members (see `porch-spec.md`)
 4. **R2 as canonical store** — GitHub syncs to R2; consumers read from R2
 5. **Event-driven updates** — R2 notifications trigger consumer updates
 6. **Two-stage retrieval** — Metadata filtering + reranking for quality
@@ -39,11 +40,12 @@ The knowledge server schemas depend on this structure being in place. See ontolo
 
 ### 1.4 Key Architectural Decisions
 
-**Why Native SIWE (not OAuth-only)?**
-- Ethereum addresses are SuperBenefit's canonical identifiers
-- Direct integration with Hats Protocol authorization
-- WaaP provides email/social fallback for users without wallets
-- Zero recurring third-party costs
+**Why the porch framework (not in-Worker OAuth)?**
+- Phase 1 ships immediately with no authentication — all tools Open tier
+- Phase 2 adds auth via Cloudflare Access for SaaS — infrastructure-layer, not Worker code
+- `authContext` injection into `createMcpHandler` replaces `OAuthProvider` wrapper entirely
+- ~680 lines of OAuth code eliminated from Worker; auth becomes a platform concern
+- New SB servers get auth for free by registering in the same Portal
 
 **Why R2 as canonical store (not direct to Vectorize)?**
 - Single source of truth for all consumers
@@ -68,7 +70,7 @@ The knowledge server schemas depend on this structure being in place. See ontolo
 
 **Why `createMcpHandler` (not `McpAgent` class)?**
 - Stateless handler is simpler for Phase 1 (search/retrieval)
-- Decouples MCP protocol from OAuth provider
+- `authContext` option enables Phase 2 identity injection without code restructuring
 - Easier to test and reason about
 - Upgrade path to stateful `Agent` class for Phase 2 when needed
 
@@ -76,8 +78,9 @@ The knowledge server schemas depend on this structure being in place. See ontolo
 
 | Component | Official Reference |
 |-----------|-------------------|
-| createMcpHandler + OAuth | `npm create cloudflare@latest -- --template=cloudflare/ai/demos/remote-mcp-server` |
-| McpAgent (legacy/stateful) | `npm create cloudflare@latest -- --template=cloudflare/ai/demos/remote-mcp-github-oauth` |
+| createMcpHandler (stateless) | `npm create cloudflare@latest -- --template=cloudflare/ai/demos/remote-mcp-server` |
+| createMcpHandler + Access for SaaS | `npm create cloudflare@latest -- --template=cloudflare/ai/demos/remote-mcp-cf-access` |
+| McpAgent (stateful, Phase 2+) | `npm create cloudflare@latest -- --template=cloudflare/ai/demos/remote-mcp-github-oauth` |
 | Workflows | `npm create cloudflare@latest -- --template=cloudflare/workflows-starter` |
 | R2 Events | [developers.cloudflare.com/r2/tutorials/upload-logs-event-notifications](https://developers.cloudflare.com/r2/tutorials/upload-logs-event-notifications/) |
 | SIWE | [github.com/spruceid/siwe-oidc](https://github.com/spruceid/siwe-oidc) |
@@ -85,6 +88,7 @@ The knowledge server schemas depend on this structure being in place. See ontolo
 | RAG Tutorial | [developers.cloudflare.com/workers-ai/guides/tutorials/build-a-retrieval-augmented-generation-ai](https://developers.cloudflare.com/workers-ai/guides/tutorials/build-a-retrieval-augmented-generation-ai/) |
 | AIChatAgent | [developers.cloudflare.com/agents/api-reference/agents-api](https://developers.cloudflare.com/agents/api-reference/agents-api/) |
 | MCP Client API | [developers.cloudflare.com/agents/model-context-protocol/mcp-client-api](https://developers.cloudflare.com/agents/model-context-protocol/mcp-client-api/) |
+| MCP Server Portals | [developers.cloudflare.com/agents/model-context-protocol/mcp-server-portals](https://developers.cloudflare.com/agents/model-context-protocol/mcp-server-portals/) |
 
 ### 1.6 System Architecture
 
@@ -100,154 +104,149 @@ The knowledge server schemas depend on this structure being in place. See ontolo
 └────────────────────────────┼─────────────────────────────────────────────┘
                              ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  Application Layer (mcp.superbenefit.xyz)                                │
+│  Application Layer (porch.superbenefit.dev)                               │
 │                                                                          │
 │  Public REST API (no auth, CORS enabled)                                 │
 │  ├── /api/v1/entries         → List/filter entries                       │
-│  ├── /api/v1/entries/{id}    → Get single entry                          │
+│  ├── /api/v1/entries/{t}/{id}→ Get single entry                          │
 │  ├── /api/v1/search          → Semantic search                           │
 │  └── /api/v1/openapi.json    → OpenAPI specification                     │
 │                                                                          │
-│  MCP Server (OAuth/SIWE protected)                                       │
-│  ├── /authorize → SIWE Auth Handler (WaaP UI)                            │
-│  ├── /siwe/nonce → Nonce generation                                      │
-│  ├── /siwe/verify → Signature verification + Hats lookup                 │
-│  ├── /token → OAuth token exchange                                       │
-│  ├── /mcp → createMcpHandler (Tools, Resources, Prompts)                 │
-│  └── /register → Dynamic Client Registration                             │
+│  MCP Server (direct to handler, bypassing Hono)                          │
+│  └── /mcp                    → createMcpHandler (Tools, Resources,       │
+│                                Prompts, authContext injection)            │
+│                                                                          │
+│  Access control: resolveAuthContext() → checkTierAccess()                │
+│  Phase 1: All tools Open tier (no auth)                                  │
+│  Phase 2+: Access JWT → authContext → tier resolution                    │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 1.7 Phased Architecture
 
-| Phase | Focus | Architecture | MCP Primitives |
-|-------|-------|--------------|----------------|
-| **1. Foundation** | Search, retrieval, API | Stateless `createMcpHandler` | Tools (primary), Resources, Prompts |
-| **2. Stateful Services** | AI chat, knowledge agents, automated PRs | `AIChatAgent` + AI SDK `tool()` | Tools with `needsApproval` |
-| **3. Knowledge Commons** | Multi-DAO federation, cross-source analysis | `Agent` as MCP Client | `addMcpServer()`, `getAITools()` |
+| Phase | Focus | Architecture | Access |
+|-------|-------|--------------|--------|
+| **1. Foundation** | Search, retrieval, API | Stateless `createMcpHandler` | Open tier only (no auth) |
+| **2. Stateful Services** | AI chat, agents, PRs | `AIChatAgent` + AI SDK `tool()` | + Public tier (Access for SaaS) |
+| **3. Knowledge Commons** | Multi-DAO federation | `Agent` as MCP Client | + Members tier (Hats/token gate) |
 
 ---
 
-## 2. Authentication & Authorization
+## 2. Access Control
 
-### 2.1 Identity Model
+> **Full specification**: See `porch-spec.md` v0.14 for the complete access control framework including tier definitions, identity model, authorization resolution, and phased implementation.
 
-| Layer | Source | Purpose |
-|-------|--------|---------|
-| **Primary ID** | Ethereum Address | Universal identifier |
-| **Profile** | ENS Text Records | Name, avatar, GitHub handle |
-| **Authorization** | Hats Protocol (Optimism) | Role badges for access control |
+This section summarizes the access control integration points in the knowledge server.
 
-### 2.2 Authentication Flow
+### 2.1 Tier Model
 
-```
-MCP Client → /authorize → Auth Page (WaaP) → SIWE Sign
-  → /siwe/verify → Hats Check (Optimism) → ENS Resolve (Mainnet)
-  → OAuth Token with { address, tier, ensName, ... }
-```
+| Tier | Economics | Authentication | Authorization |
+|------|-----------|----------------|---------------|
+| **Open** | Non-excludable, non-rivalrous | None | None |
+| **Public** | Non-excludable, rivalrous | Required (wallet or GitHub) | Sybil resistance |
+| **Members** | Excludable, rivalrous | Required | Hats/token/org check |
 
-**Key insight:** workers-oauth-provider is **authentication-agnostic**. SIWE integration works via a custom `defaultHandler` that presents the challenge, verifies signatures, then calls `completeAuthorization()` with the wallet address as `userId`.
-
-### 2.3 WaaP Integration (UI Client)
-
-> **Note:** WaaP is a **frontend wallet SDK** that runs in the browser. The knowledge-server serves an auth page that loads WaaP; the Worker itself only handles SIWE verification.
-
-| Auth Method | User Type | How It Works |
-|-------------|-----------|--------------|
-| Wallet | Web3 natives | Browser wallets (MetaMask, etc.) via WaaP's EIP-1193 interface |
-| Email | Newcomers | WaaP creates MPC wallet (2PC with Ika network) |
-| Social | Newcomers | GitHub/Discord/Google → MPC wallet via WaaP |
-
-**Architecture:**
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ UI Client (Browser)                                             │
-│ ┌─────────────────────────────────────────────────────────────┐ │
-│ │ WaaP SDK (@human.tech/waap-sdk)                             │ │
-│ │ - window.waap.login() → user authenticates                  │ │
-│ │ - window.waap.request({ method: 'personal_sign', ... })     │ │
-│ │   → signs SIWE message                                      │ │
-│ └─────────────────────────────────────────────────────────────┘ │
-└──────────────────────────────┬──────────────────────────────────┘
-                               │ POST /siwe/verify
-                               │ { message, signature }
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ Knowledge Server (Cloudflare Worker)                            │
-│ ┌─────────────────────────────────────────────────────────────┐ │
-│ │ viem/siwe (verifySiweMessage)                               │ │
-│ │ - Verifies signature matches address                        │ │
-│ │ - Validates nonce, domain, timestamp                        │ │
-│ │ - Issues OAuth token with address as userId                 │ │
-│ └─────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Auth Page (served by Worker at /authorize):**
-
-The Worker serves a static HTML page that loads WaaP:
-
-```html
-<!-- Served by Worker at /authorize -->
-<script type="module">
-  import { initWaaP } from 'https://cdn.jsdelivr.net/npm/@human.tech/waap-sdk/+esm';
-  
-  initWaaP({
-    config: {
-      authenticationMethods: ['wallet', 'email', 'social'],
-      allowedSocials: ['github', 'discord', 'google'],
-      styles: { darkMode: true }
-    },
-    project: {
-      name: 'SuperBenefit',
-      entryTitle: 'Sign in to SuperBenefit AI Tools'
-    }
-  });
-  
-  // After WaaP login, sign SIWE message and POST to /siwe/verify
-  async function authenticate() {
-    await window.waap.login();
-    const [address] = await window.waap.request({ method: 'eth_requestAccounts' });
-    
-    // Get nonce from server
-    const { nonce } = await fetch('/siwe/nonce').then(r => r.json());
-    
-    // Create and sign SIWE message
-    const message = createSiweMessage({ address, nonce, ... });
-    const signature = await window.waap.request({
-      method: 'personal_sign',
-      params: [message, address]
-    });
-    
-    // Verify on server
-    const result = await fetch('/siwe/verify', {
-      method: 'POST',
-      body: JSON.stringify({ message, signature })
-    });
-  }
-</script>
-```
-
-**Server-side verification (in Worker):**
+### 2.2 Framework Interface
 
 ```typescript
-import { verifySiweMessage, parseSiweMessage } from 'viem/siwe';
-import { createPublicClient, http } from 'viem';
-import { mainnet } from 'viem/chains';
+// src/auth/types.ts
 
-// viem/siwe works in edge runtime (no Buffer issues like siwe npm package)
-async function verifySIWE(message: string, signature: `0x${string}`) {
-  const client = createPublicClient({ chain: mainnet, transport: http() });
-  
-  const valid = await verifySiweMessage(client, { message, signature });
-  if (!valid) throw new Error('Invalid signature');
-  
-  const parsed = parseSiweMessage(message);
-  return parsed.address;
+export type AccessTier = 'open' | 'public' | 'members';
+
+export const TIER_LEVEL: Record<AccessTier, number> = {
+  open: 0,
+  public: 1,
+  members: 2,
+};
+
+export interface Identity {
+  userId: string;
+  name: string | null;
+  email: string | null;
+  provider: string;    // "github" | "siwe"
+}
+
+export interface AuthContext {
+  identity: Identity | null;
+  tier: AccessTier;
+  address: `0x${string}` | null;
+  roles: HatsRole | null;
+}
+
+export interface HatsRole {
+  hats: bigint[];
+  isMember: boolean;
+  isContributor: boolean;
 }
 ```
 
-### 2.4 Hats Protocol Configuration
+### 2.3 Auth Context Resolution
+
+```typescript
+// src/auth/resolve.ts
+import { getMcpAuthContext } from 'agents/mcp';
+
+/**
+ * Resolve access context from the current request.
+ *
+ * Phase 1: Always returns { tier: 'open', identity: null }
+ * Phase 2: Extracts identity from getMcpAuthContext() (populated by
+ *          Access JWT injection via createMcpHandler's authContext option),
+ *          returns 'public' after sybil/agreement checks
+ * Phase 3: Checks Hats/tokens/org membership, returns 'members' if authorized
+ *
+ * This function is the ONLY place tier resolution logic lives.
+ * Tools never resolve tiers themselves.
+ */
+export async function resolveAuthContext(env: Env): Promise<AuthContext> {
+  // --- Phase 2: Authentication ---
+  // const mcpAuth = getMcpAuthContext();
+  // if (!mcpAuth?.props?.sub) {
+  //   return { identity: null, tier: 'open', address: null, roles: null };
+  // }
+  //
+  // const identity: Identity = {
+  //   userId: mcpAuth.props.sub as string,
+  //   name: (mcpAuth.props.name as string) ?? null,
+  //   email: (mcpAuth.props.email as string) ?? null,
+  //   provider: (mcpAuth.props.provider as string) ?? 'unknown',
+  // };
+  //
+  // --- Phase 3: Authorization ---
+  // const address = await env.IDENTITY_MAP.get(identity.userId);
+  // if (address) {
+  //   const roles = await checkHatsRoles(address, env);
+  //   if (roles.isMember || roles.isContributor) {
+  //     return { identity, tier: 'members', address, roles };
+  //   }
+  // }
+  //
+  // return { identity, tier: 'public', address: null, roles: null };
+
+  // Phase 1: Open tier only — no authentication
+  return { identity: null, tier: 'open', address: null, roles: null };
+}
+```
+
+### 2.4 Tier Checking
+
+```typescript
+// src/auth/check.ts
+
+export function checkTierAccess(
+  requiredTier: AccessTier,
+  authContext: AuthContext
+): { allowed: true; authContext: AuthContext } | { allowed: false; requiredTier: AccessTier; currentTier: AccessTier } {
+  if (TIER_LEVEL[authContext.tier] >= TIER_LEVEL[requiredTier]) {
+    return { allowed: true, authContext };
+  }
+  return { allowed: false, requiredTier, currentTier: authContext.tier };
+}
+```
+
+### 2.5 Hats Protocol Configuration
+
+> **Note**: Dormant in Phase 1. Active when porch enables Members tier (Phase 3).
 
 | Setting | Value |
 |---------|-------|
@@ -255,11 +254,11 @@ async function verifySIWE(message: string, signature: `0x${string}`) {
 | Contract | `0x3bc1A0Ad72417f2d411118085256fC53CBdDd137` |
 | Tree ID | 30 |
 
-| Hat Path | Role | Access Tier |
-|----------|------|-------------|
-| `30.3.1` | Contributor | `vibecoder` |
-| `30.3.5` | Basic Member | `member` |
-| (none) | Public | `public` |
+| Hat Path | Role | Tier |
+|----------|------|------|
+| `30.3.1` | Contributor | `members` |
+| `30.3.5` | Community Member | `members` |
+| (none) | Public | `open` or `public` |
 
 ```typescript
 import { treeIdToHatId } from '@hatsprotocol/sdk-v1-core';
@@ -268,153 +267,35 @@ const HATS = {
   contributor: treeIdToHatId(30, [3, 1]),
   member: treeIdToHatId(30, [3, 5])
 };
-
-async function checkHatsRoles(address: `0x${string}`, client: PublicClient) {
-  const [isContributor, isMember] = await Promise.all([
-    client.readContract({
-      address: HATS_CONTRACT,
-      abi: HATS_ABI,
-      functionName: 'isWearerOfHat',
-      args: [address, HATS.contributor]
-    }),
-    client.readContract({
-      address: HATS_CONTRACT,
-      abi: HATS_ABI,
-      functionName: 'isWearerOfHat',
-      args: [address, HATS.member]
-    })
-  ]);
-
-  return {
-    isContributor,
-    isMember,
-    tier: isContributor ? 'vibecoder' : isMember ? 'member' : 'public'
-  };
-}
 ```
 
-### 2.5 Token Lifecycle
+### 2.6 Phase 2: authContext Injection
 
-| Setting | Value |
-|---------|-------|
-| Access Token TTL | 1 hour |
-| Refresh Token TTL | 30 days |
-| Role Cache TTL | 5 minutes |
+When Cloudflare Access for SaaS is configured, the Worker receives authenticated requests with a `CF-Access-JWT-Assertion` header. The Worker parses this JWT, validates against `CF_ACCESS_AUD`, and passes the claims to `createMcpHandler` via the `authContext` option. This populates `getMcpAuthContext()` inside tools without any `OAuthProvider` dependency:
 
 ```typescript
-const oauthProvider = new OAuthProvider({
-  apiRoute: '/mcp',
-  apiHandler: McpHandler,
-  defaultHandler: SIWEHandler,
-  refreshTokenTTL: 2592000,
-  
-  tokenExchangeCallback: async ({ props, grantType }) => {
-    if (grantType === 'refresh_token') {
-      const roles = await checkHatsRoles(props.address, client);
-      const newTier = roles.isContributor ? 'vibecoder'
-                    : roles.isMember ? 'member' : 'public';
-      return {
-        accessTokenProps: { ...props, roles, tier: newTier },
-        newProps: { ...props, roles, tier: newTier }
-      };
-    }
-    return {};
-  }
+// Phase 2 addition to src/index.ts fetch handler
+const claims = await validateAccessJWT(request, env.CF_ACCESS_AUD);
+const handler = createMcpHandler(server, {
+  route: '/mcp',
+  corsOptions: { origin: '*' },
+  authContext: claims ? { props: claims } : undefined,
 });
 ```
 
-### 2.6 SIWE Verification
+This is the **only** Worker-side change for Phase 2 auth. All tier resolution happens in `resolveAuthContext()` by uncommenting the Phase 2 block.
 
-**Critical:** Use `viem/siwe` utilities, NOT the standalone `siwe` package (has Buffer API dependencies that break in edge runtimes).
+### 2.7 WaaP Integration (UI Client)
 
-```typescript
-import { createPublicClient, http } from 'viem';
-import { mainnet } from 'viem/chains';
-import { parseSiweMessage, generateSiweNonce, verifySiweMessage } from 'viem/siwe';
+> **Note:** WaaP is a **frontend wallet SDK** that runs in the browser. It provides the wallet that signs SIWE messages. The knowledge server does not depend on WaaP directly.
 
-// Nonce management
-async function createNonce(env: Env): Promise<string> {
-  const nonce = generateSiweNonce();
-  await env.NONCE_KV.put(nonce, 'pending', { expirationTtl: 300 });
-  return nonce;
-}
+| Auth Method | User Type | How It Works |
+|-------------|-----------|--------------|
+| Wallet | Web3 natives | Browser wallets (MetaMask, etc.) via WaaP's EIP-1193 interface |
+| Email | Newcomers | WaaP creates MPC wallet (2PC with Ika network) |
+| Social | Newcomers | GitHub/Discord/Google → MPC wallet via WaaP |
 
-async function validateNonce(nonce: string, env: Env): Promise<boolean> {
-  const value = await env.NONCE_KV.get(nonce);
-  if (!value) return false;
-  await env.NONCE_KV.delete(nonce); // Single-use
-  return true;
-}
-
-// Verification with EIP-1271 support for smart contract wallets
-const publicClient = createPublicClient({ 
-  chain: mainnet, 
-  transport: http(env.MAINNET_RPC_URL) 
-});
-
-async function verifySIWE(message: string, signature: `0x${string}`): Promise<boolean> {
-  return publicClient.verifySiweMessage({
-    message,
-    signature,
-    blockTag: 'safe' // Required for EIP-1271 smart contract wallet verification
-  });
-}
-```
-
-### 2.7 SIWE Handler Integration
-
-```typescript
-const SIWEHandler = {
-  async fetch(request: Request, env: Env) {
-    const url = new URL(request.url);
-    
-    if (url.pathname === '/siwe/nonce') {
-      const nonce = await createNonce(env);
-      return Response.json({ nonce });
-    }
-    
-    if (url.pathname === '/siwe/verify' && request.method === 'POST') {
-      const { message, signature, stateId } = await request.json();
-      const siweMessage = parseSiweMessage(message);
-      
-      // Verify nonce (single-use)
-      if (!await validateNonce(siweMessage.nonce, env)) {
-        return Response.json({ error: 'Invalid nonce' }, { status: 400 });
-      }
-      
-      // Verify signature
-      const valid = await verifySIWE(message, signature);
-      if (!valid) {
-        return Response.json({ error: 'Invalid signature' }, { status: 401 });
-      }
-      
-      // Fetch roles and ENS
-      const [roles, ens] = await Promise.all([
-        checkHatsRoles(siweMessage.address, optimismClient),
-        resolveENS(siweMessage.address, mainnetClient)
-      ]);
-      
-      // Complete OAuth flow
-      const { redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization({
-        request: oauthReqInfo,
-        userId: siweMessage.address,
-        props: {
-          address: siweMessage.address,
-          roles,
-          tier: roles.isContributor ? 'vibecoder' : roles.isMember ? 'member' : 'public',
-          ensName: ens.name,
-          chainId: 1
-        }
-      });
-      
-      return Response.json({ redirectTo });
-    }
-    
-    // Fall through to auth page
-    return renderAuthPage(request);
-  }
-};
-```
+WaaP (`@human.tech/waap-sdk`) runs in the frontend chat interfaces (`front.porch.superbenefit.dev/ai` and `back.porch.superbenefit.dev/ai`). It handles wallet creation and SIWE message signing. The signed SIWE message flows through the SIWE OIDC IdP (a separate Worker) registered in Cloudflare Access, which issues standard OIDC tokens. The knowledge server receives these as Access JWTs — it never interacts with WaaP directly.
 
 ---
 
@@ -514,7 +395,6 @@ export const DATA_TYPES: ContentType[] = [
 
 ```typescript
 export const PATH_TYPE_MAP: Record<string, ContentType> = {
-  // Resources
   'artifacts/patterns': 'pattern',
   'artifacts/practices': 'practice',
   'artifacts/primitives': 'primitive',
@@ -523,16 +403,13 @@ export const PATH_TYPE_MAP: Record<string, ContentType> = {
   'artifacts/questions': 'question',
   'artifacts/studies': 'study',
   'artifacts/articles': 'article',
-  // Data
   'data/people': 'person',
   'data/groups': 'group',
   'data/projects': 'project',
   'data/places': 'place',
   'data/gatherings': 'gathering',
-  // Reference
   'links': 'link',
   'tags': 'tag',
-  // File
   'notes': 'file',
   'drafts': 'file',
 };
@@ -551,34 +428,34 @@ export function inferContentType(path: string): ContentType {
 
 ```typescript
 export const FileSchema = z.object({
-  type: ContentTypeSchema.optional(),  // Inferred from path if not specified
+  type: ContentTypeSchema.optional(),
   title: z.string().min(1),
   description: z.string().optional(),
   date: z.coerce.date(),
   publish: z.boolean().default(false),
   draft: z.boolean().default(false),
   permalink: z.string().optional(),
-  author: z.array(z.string()).optional(),  // links to person pages
-  group: z.string().optional(),            // cell/project slug
+  author: z.array(z.string()).optional(),
+  group: z.string().optional(),
 });
 ```
 
 **Parent type schemas**
 
 ```typescript
-export const ReferenceSchema = FileSchema;  // No additional fields
+export const ReferenceSchema = FileSchema;
 
 export const ResourceSchema = FileSchema.extend({
-  release: z.string().optional(),           // creative release slug
-  hasPart: z.array(z.string()).optional(),  // component resources
-  isPartOf: z.array(z.string()).optional(), // parent resources
+  release: z.string().optional(),
+  hasPart: z.array(z.string()).optional(),
+  isPartOf: z.array(z.string()).optional(),
 });
 
 export const StorySchema = FileSchema.extend({
   release: z.string().optional(),
 });
 
-export const DataSchema = FileSchema;  // No additional fields
+export const DataSchema = FileSchema;
 ```
 
 **Concrete type schemas**
@@ -616,7 +493,7 @@ export const ProtocolSchema = ResourceSchema.extend({
   steps: z.array(z.string()).optional(),
 });
 
-export const PlaybookSchema = ResourceSchema;  // No additional fields
+export const PlaybookSchema = ResourceSchema;
 
 export const QuestionSchema = ResourceSchema.extend({
   status: z.enum(['open', 'exploring', 'resolved']).optional(),
@@ -625,7 +502,7 @@ export const QuestionSchema = ResourceSchema.extend({
 });
 
 // Story types
-export const StudySchema = StorySchema;  // No additional fields
+export const StudySchema = StorySchema;
 
 export const ArticleSchema = StorySchema.extend({
   url: z.string().url().optional(),
@@ -677,6 +554,8 @@ export const GatheringSchema = DataSchema.extend({
 ```typescript
 export const ContentSchema = z.discriminatedUnion('type', [
   FileSchema.extend({ type: z.literal('file') }),
+  ReferenceSchema.extend({ type: z.literal('reference') }),
+  ReferenceSchema.extend({ type: z.literal('index') }),
   LinkSchema.extend({ type: z.literal('link') }),
   TagSchema.extend({ type: z.literal('tag') }),
   PatternSchema.extend({ type: z.literal('pattern') }),
@@ -729,23 +608,11 @@ export interface R2Document {
 
 ### 4.2 ID Generation
 
-Vector IDs (and R2 key stems) are derived from file paths:
-
 ```typescript
-/**
- * Generate document ID from file path.
- * Example: "artifacts/patterns/cell-governance.md" → "cell-governance"
- * 
- * Constraints:
- * - Max 64 bytes (Vectorize limit)
- * - URL-safe characters only
- * - Unique within contentType namespace
- */
 export function generateId(path: string): string {
   const filename = path.split('/').pop() || path;
   const id = filename.replace(/\.md$/, '');
   
-  // Ensure ID is under 64 bytes (Vectorize limit)
   if (new TextEncoder().encode(id).length > 64) {
     throw new Error(`ID exceeds 64 byte limit: ${id}`);
   }
@@ -753,10 +620,6 @@ export function generateId(path: string): string {
   return id;
 }
 
-/**
- * Construct R2 object key from contentType and ID.
- * Example: ("pattern", "cell-governance") → "content/pattern/cell-governance.json"
- */
 export function toR2Key(contentType: ContentType, id: string): string {
   return `content/${contentType}/${id}.json`;
 }
@@ -770,17 +633,7 @@ export function toR2Key(contentType: ContentType, id: string): string {
 | Metric | cosine |
 | Max vectors | 10,000,000 |
 
-**Vectorize Limits (critical):**
-- Metadata per vector: 10 KiB max
-- Vector ID length: 64 bytes max
-- Indexed string fields: first 64 bytes indexed for filtering
-- topK with metadata: 20 max
-- topK without metadata: 100 max
-- Metadata indexes per index: 10 max
-
 **Indexed Metadata (6 of 10 max):**
-
-Only published content is synced (`publish: true` AND `draft: false`), so those fields aren't needed as indexes.
 
 | Field | Type | Purpose |
 |-------|------|---------|
@@ -793,8 +646,6 @@ Only published content is synced (`publish: true` AND `draft: false`), so those 
 
 **Non-indexed Metadata (for retrieval/reranking):**
 
-Stored in metadata but NOT indexed (within 10 KiB total limit):
-
 | Field | Purpose | Size estimate |
 |-------|---------|---------------|
 | `path` | R2 object key for document fetch | ~100 bytes |
@@ -802,7 +653,7 @@ Stored in metadata but NOT indexed (within 10 KiB total limit):
 | `description` | Display, reranking context | ~500 bytes |
 | `content` | Truncated body for reranking | ~8,000 bytes |
 
-**Critical constraint:** Metadata indexes must be created **before** inserting vectors. Vectors inserted prior to index creation will not be filterable.
+**Critical constraint:** Metadata indexes must be created **before** inserting vectors.
 
 ### 4.4 Vector Structure
 
@@ -812,31 +663,29 @@ interface VectorRecord {
   values: number[];              // 768-dimensional embedding
   metadata: {
     // Indexed fields (used for filtering)
-    contentType: string;         // "pattern", "tag", etc.
-    group: string;               // "dao-primitives", "all-in-for-sport"
+    contentType: string;
+    group: string;
     tags: string;                // "governance,cells,coordination"
-    release: string;             // "v1", "2024-q1"
-    status: string;              // "active", "completed" (projects only)
-    date: number;                // Unix timestamp ms (1706745600000)
+    release: string;
+    status: string;
+    date: number;                // Unix timestamp ms
     
     // Non-indexed fields (used for retrieval/reranking)
     path: string;                // "content/pattern/cell-governance.json"
-    title: string;               // "Cell Governance"
-    description: string;         // Short description for display
+    title: string;
+    description: string;
     content: string;             // Truncated body (~8KB) for reranking
   };
 }
 ```
 
-**Content truncation for metadata:**
+**Content truncation:**
 
 ```typescript
-const MAX_CONTENT_LENGTH = 8000; // ~8KB, leaves room for other fields
+const MAX_CONTENT_LENGTH = 8000;
 
 export function truncateForMetadata(content: string): string {
   if (content.length <= MAX_CONTENT_LENGTH) return content;
-  
-  // Truncate at word boundary
   const truncated = content.slice(0, MAX_CONTENT_LENGTH);
   const lastSpace = truncated.lastIndexOf(' ');
   return truncated.slice(0, lastSpace) + '...';
@@ -845,14 +694,14 @@ export function truncateForMetadata(content: string): string {
 
 ### 4.5 KV Namespaces
 
-| Namespace | Purpose | TTL |
-|-----------|---------|-----|
-| `OAUTH_KV` | OAuth tokens | Managed |
-| `NONCE_KV` | SIWE nonces | 5 min |
-| `ROLE_CACHE` | Hats roles | 5 min |
-| `ENS_CACHE` | ENS resolution | 1 hour |
-| `RERANK_CACHE` | Rerank results | 1 hour |
-| `SYNC_STATE` | Sync metadata | None |
+| Namespace | Purpose | TTL | Phase |
+|-----------|---------|-----|-------|
+| `ROLE_CACHE` | Hats roles | 5 min | Phase 3 (dormant) |
+| `ENS_CACHE` | ENS resolution | 1 hour | Phase 3 (dormant) |
+| `RERANK_CACHE` | Rerank results | 1 hour | Phase 1 (active) |
+| `SYNC_STATE` | Sync metadata | None | Phase 1 (active) |
+
+> **Removed in v0.12**: `OAUTH_KV` and `NONCE_KV` — no longer needed. Phase 2 uses `authContext` injection via `createMcpHandler`, not `OAuthProvider`. See `porch-spec.md` for rationale.
 
 ---
 
@@ -861,33 +710,32 @@ export function truncateForMetadata(content: string): string {
 ### 5.1 GitHub Webhook Handler
 
 ```typescript
-export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const body = await request.text();
-    const signature = request.headers.get('x-hub-signature-256');
-    if (!await verifyGitHubSignature(body, signature, env.GITHUB_WEBHOOK_SECRET)) {
-      return new Response('Invalid signature', { status: 403 });
-    }
-
-    const payload = JSON.parse(body);
-    if (payload.ref !== 'refs/heads/main') {
-      return new Response('Ignored: not main branch');
-    }
-
-    const changedFiles = payload.commits
-      .flatMap(c => [...c.added, ...c.modified])
-      .filter(f => f.endsWith('.md') && !isExcluded(f));
-    const deletedFiles = payload.commits
-      .flatMap(c => c.removed)
-      .filter(f => f.endsWith('.md'));
-
-    await env.SYNC_WORKFLOW.create({
-      params: { changedFiles, deletedFiles, commitSha: payload.after }
-    });
-
-    return Response.json({ status: 'ok' });
+// Integrated into src/index.ts fetch handler
+async function handleWebhook(request: Request, env: Env): Promise<Response> {
+  const body = await request.text();
+  const signature = request.headers.get('x-hub-signature-256');
+  if (!await verifyGitHubSignature(body, signature, env.GITHUB_WEBHOOK_SECRET)) {
+    return new Response('Invalid signature', { status: 403 });
   }
-};
+
+  const payload = JSON.parse(body);
+  if (payload.ref !== 'refs/heads/main') {
+    return new Response('Ignored: not main branch');
+  }
+
+  const changedFiles = payload.commits
+    .flatMap(c => [...c.added, ...c.modified])
+    .filter(f => f.endsWith('.md') && !isExcluded(f));
+  const deletedFiles = payload.commits
+    .flatMap(c => c.removed)
+    .filter(f => f.endsWith('.md'));
+
+  await env.SYNC_WORKFLOW.create({
+    params: { changedFiles, deletedFiles, commitSha: payload.after }
+  });
+
+  return Response.json({ status: 'ok' });
+}
 ```
 
 ### 5.2 Sync Workflow
@@ -910,22 +758,20 @@ export class KnowledgeSyncWorkflow extends WorkflowEntrypoint<Env, SyncParams> {
           { headers: { 'Authorization': `Bearer ${this.env.GITHUB_TOKEN}` } }
         );
         
-        if (resp.status === 429) throw new Error('Rate limited'); // Will retry
-        if (resp.status === 404) throw new NonRetryableError('File not found'); // Won't retry
+        if (resp.status === 429) throw new Error('Rate limited');
+        if (resp.status === 404) throw new NonRetryableError('File not found');
         
         const data = await resp.json();
         const content = atob(data.content);
         const parsed = await this.parseMarkdown(content);
         
-        // Only sync published, non-draft content
         if (!parsed.frontmatter.publish || parsed.frontmatter.draft) {
-          return; // Skip unpublished content
+          return;
         }
         
         const contentType = inferContentType(filePath);
         const id = generateId(filePath);
         
-        // Store full document in R2 (canonical store)
         const r2Doc: R2Document = {
           id,
           contentType,
@@ -957,13 +803,11 @@ export class KnowledgeSyncWorkflow extends WorkflowEntrypoint<Env, SyncParams> {
 ### 5.3 R2 Event Notifications → Queue Consumer
 
 ```typescript
-// R2 bucket notifications trigger queue messages
 export default {
   async queue(batch: MessageBatch<R2EventNotification>, env: Env) {
     for (const msg of batch.messages) {
       const { object, eventType } = msg.body;
       
-      // Only process content/ objects
       if (!object.key.startsWith('content/')) {
         msg.ack();
         continue;
@@ -986,29 +830,23 @@ export default {
 };
 
 async function updateVectorize(doc: R2Document, env: Env): Promise<void> {
-  // Generate embedding
   const embedding = await env.AI.run('@cf/baai/bge-base-en-v1.5', {
     text: [doc.content]
   });
   
-  // Prepare metadata (within 10 KiB limit)
   const metadata = {
-    // Indexed fields
     contentType: doc.contentType,
     group: doc.metadata.group || '',
     tags: (doc.metadata.tags || []).join(','),
     release: doc.metadata.release || '',
     status: doc.metadata.status || '',
     date: new Date(doc.metadata.date).getTime(),
-    
-    // Non-indexed fields (for retrieval/reranking)
     path: toR2Key(doc.contentType, doc.id),
     title: doc.metadata.title,
     description: doc.metadata.description || '',
     content: truncateForMetadata(doc.content),
   };
   
-  // Upsert to Vectorize
   await env.VECTORIZE.upsert([{
     id: doc.id,
     values: embedding.data[0],
@@ -1049,11 +887,6 @@ async function deleteFromVectorize(id: string, env: Env): Promise<void> {
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Why this pattern:**
-- Stage 1 uses indexed metadata for fast filtering (Vectorize)
-- Stage 2 uses content snippet stored in metadata (no R2 round-trip)
-- Stage 3 fetches full documents only for final top-K (minimizes latency)
-
 ### 6.2 Vector Search with Filters
 
 ```typescript
@@ -1062,35 +895,20 @@ async function searchWithFilters(
   filters: SearchFilters,
   env: Env
 ): Promise<VectorizeMatch[]> {
-  // Generate query embedding
   const embedding = await env.AI.run('@cf/baai/bge-base-en-v1.5', {
     text: [query]
   });
 
-  // Build Vectorize filter from search filters
   const vectorFilter: VectorizeVectorMetadataFilter = {};
   
-  if (filters.contentType) {
-    vectorFilter.contentType = { $eq: filters.contentType };
-  }
-  if (filters.group) {
-    vectorFilter.group = { $eq: filters.group };
-  }
-  if (filters.release) {
-    vectorFilter.release = { $eq: filters.release };
-  }
-  if (filters.status) {
-    vectorFilter.status = { $eq: filters.status };
-  }
-  if (filters.tags) {
-    // Tags stored as comma-separated string
-    // Use $in for any-match semantics
-    vectorFilter.tags = { $in: filters.tags };
-  }
+  if (filters.contentType) vectorFilter.contentType = { $eq: filters.contentType };
+  if (filters.group) vectorFilter.group = { $eq: filters.group };
+  if (filters.release) vectorFilter.release = { $eq: filters.release };
+  if (filters.status) vectorFilter.status = { $eq: filters.status };
+  if (filters.tags) vectorFilter.tags = { $in: filters.tags };
 
-  // Query Vectorize with metadata
   const results = await env.VECTORIZE.query(embedding.data[0], {
-    topK: 20,  // Max when returnMetadata: 'all'
+    topK: 20,
     returnMetadata: 'all',
     filter: Object.keys(vectorFilter).length > 0 ? vectorFilter : undefined
   });
@@ -1101,16 +919,7 @@ async function searchWithFilters(
 
 ### 6.3 Reranking
 
-**Critical:** Use batch API pattern, NOT per-document calls.
-
 ```typescript
-interface RerankResult {
-  id: string;
-  score: number;           // Original vector similarity
-  rerankScore: number;     // Semantic relevance from reranker
-  metadata: VectorMetadata;
-}
-
 async function rerankResults(
   query: string,
   matches: VectorizeMatch[],
@@ -1118,24 +927,20 @@ async function rerankResults(
 ): Promise<RerankResult[]> {
   if (matches.length === 0) return [];
   
-  // Check cache first
   const cacheKey = `rerank:${hashQuery(query, matches.map(m => m.id))}`;
   const cached = await env.RERANK_CACHE.get(cacheKey, 'json');
   if (cached) return cached as RerankResult[];
 
-  // Extract content snippets from metadata (no R2 fetch needed!)
   const contexts = matches.map(m => ({
     text: m.metadata?.content as string || m.metadata?.description as string || ''
   }));
 
-  // Batch rerank - single API call for all documents
   const result = await env.AI.run('@cf/baai/bge-reranker-base', {
     query,
     contexts,
     top_k: 5
   });
 
-  // Map scores back to original matches
   const ranked: RerankResult[] = result.response.map(r => ({
     id: matches[r.id].id,
     score: matches[r.id].score,
@@ -1143,57 +948,33 @@ async function rerankResults(
     metadata: matches[r.id].metadata as VectorMetadata
   }));
 
-  // Cache for 1 hour
   await env.RERANK_CACHE.put(cacheKey, JSON.stringify(ranked), {
     expirationTtl: 3600
   });
 
   return ranked;
 }
-
-function hashQuery(query: string, ids: string[]): string {
-  const input = query + ':' + ids.sort().join(',');
-  // Simple hash for cache key
-  let hash = 0;
-  for (let i = 0; i < input.length; i++) {
-    const char = input.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-  return hash.toString(16);
-}
 ```
 
 ### 6.4 Full Document Retrieval
 
 ```typescript
-/**
- * Fetch full documents from R2 using metadata.path.
- * Only called for final top-K results after reranking.
- */
 async function getDocuments(
   results: RerankResult[],
   env: Env
 ): Promise<R2Document[]> {
-  // Fetch in parallel using metadata.path
   const docs = await Promise.all(
     results.map(async (result) => {
       const path = result.metadata.path as string;
       if (!path) return null;
-      
       const obj = await env.KNOWLEDGE.get(path);
       if (!obj) return null;
-      
       return obj.json() as Promise<R2Document>;
     })
   );
-  
   return docs.filter((d): d is R2Document => d !== null);
 }
 
-/**
- * Get a single document by ID and contentType.
- */
 async function getDocument(
   contentType: ContentType,
   id: string,
@@ -1201,7 +982,6 @@ async function getDocument(
 ): Promise<R2Document | null> {
   const key = toR2Key(contentType, id);
   const obj = await env.KNOWLEDGE.get(key);
-  
   if (!obj) return null;
   return obj.json();
 }
@@ -1210,39 +990,22 @@ async function getDocument(
 ### 6.5 Search Orchestrator
 
 ```typescript
-export interface SearchResult {
-  id: string;
-  contentType: ContentType;
-  title: string;
-  description: string;
-  score: number;
-  rerankScore?: number;
-  document?: R2Document;  // Full document if requested
-}
-
 export async function searchKnowledge(
   query: string,
   filters: SearchFilters,
   options: { includeDocuments?: boolean } = {},
   env: Env
 ): Promise<SearchResult[]> {
-  // Stage 1: Vector search with metadata filtering
   const matches = await searchWithFilters(query, filters, env);
+  if (matches.length === 0) return [];
   
-  if (matches.length === 0) {
-    return [];
-  }
-  
-  // Stage 2: Rerank using metadata.content (no R2 fetch)
   const ranked = await rerankResults(query, matches, env);
   
-  // Stage 3: Optionally fetch full documents (only for top 5)
   let documents: R2Document[] = [];
   if (options.includeDocuments) {
     documents = await getDocuments(ranked, env);
   }
   
-  // Build results
   return ranked.map((r, i) => ({
     id: r.id,
     contentType: r.metadata.contentType as ContentType,
@@ -1261,23 +1024,20 @@ export async function searchKnowledge(
 
 ### 7.1 MCP Primitives Overview
 
-The MCP server exposes three types of primitives:
-
 | Primitive | Controlled By | Purpose |
 |-----------|---------------|---------|
 | **Tools** | AI model | Callable functions the AI autonomously invokes |
 | **Resources** | Application | Read-only data clients inject as context |
 | **Prompts** | User | Workflow templates users explicitly invoke |
 
-### 7.2 Server Implementation (Stateless Pattern)
+### 7.2 Server Implementation
 
-Phase 1 uses stateless `createMcpHandler` with `@modelcontextprotocol/sdk`:
+Phase 1 uses stateless `createMcpHandler`. MCP requests go directly to the handler, bypassing Hono:
 
 ```typescript
 // src/mcp/server.ts
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createMcpHandler } from "agents/mcp";
-import { z } from "zod";
 
 export function createKnowledgeServer(env: Env) {
   const server = new McpServer({
@@ -1285,68 +1045,89 @@ export function createKnowledgeServer(env: Env) {
     version: "1.0.0",
   });
 
-  // Register tools
   registerTools(server, env);
-  
-  // Register resources
   registerResources(server, env);
-  
-  // Register prompts
   registerPrompts(server, env);
 
   return server;
 }
 
-// Export handler for OAuthProvider integration
 export const McpHandler = {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const server = createKnowledgeServer(env);
-    return createMcpHandler(server, {
-      corsOptions: { origins: ["*"] }
-    })(request, env, ctx);
-  }
+    const handler = createMcpHandler(server, {
+      route: '/mcp',
+      corsOptions: { origin: '*' },
+      // Phase 2: authContext injected here from Access JWT
+    });
+    return handler(request, env, ctx);
+  },
 };
 ```
 
-### 7.3 Tools
-
-**Design Principles (per Cloudflare best practices):**
-- Optimize tools for user goals, not API surface area
-- Detailed descriptions help the model understand usage
-- Permission checks inside handlers, not conditional registration
-
-**Permission Wrapper Pattern:**
+### 7.3 Router Integration
 
 ```typescript
-type AccessTier = 'public' | 'member' | 'vibecoder';
-type ToolHandler = (params: any, context: any) => Promise<{ content: any[] }>;
+// src/index.ts
+import { Hono } from 'hono';
+import { api } from './api/routes';
+import { McpHandler } from './mcp';
+import { handleVectorizeQueue } from './consumers/vectorize';
 
-function requireTier(requiredTier: AccessTier, handler: ToolHandler): ToolHandler {
-  const tierLevel = { public: 0, member: 1, vibecoder: 2 };
-  
-  return async (params, context) => {
-    const userTier = context.props?.tier || 'public';
+export { KnowledgeSyncWorkflow } from './sync/workflow';
+
+const app = new Hono<{ Bindings: Env }>();
+
+// Public REST API
+app.route('/api/v1', api);
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    const url = new URL(request.url);
     
-    if (tierLevel[userTier] < tierLevel[requiredTier]) {
-      return {
-        content: [{
-          type: "text",
-          text: `Access denied. This tool requires ${requiredTier} access.`
-        }],
-        isError: true
-      };
+    // MCP server — direct to handler, bypassing Hono
+    if (url.pathname === '/mcp' || url.pathname.startsWith('/mcp/')) {
+      return McpHandler.fetch(request, env, ctx);
     }
     
-    return handler(params, context);
-  };
-}
+    // GitHub webhook
+    if (url.pathname === '/webhook' && request.method === 'POST') {
+      return handleWebhook(request, env);
+    }
+    
+    // Everything else through Hono (REST API, health checks)
+    return app.fetch(request, env, ctx);
+  },
+  queue: handleVectorizeQueue,
+};
+```
+
+### 7.4 Tools
+
+**Access control pattern (porch framework):**
+
+```typescript
+// Every tool uses this pattern
+server.tool('tool_name', 'description', { /* schema */ },
+  async (params) => {
+    const authContext = await resolveAuthContext(env);
+    const access = checkTierAccess('open', authContext);
+    if (!access.allowed) {
+      return {
+        content: [{ type: 'text', text: `Requires ${access.requiredTier} access. Current: ${access.currentTier}.` }],
+        isError: true,
+      };
+    }
+    // ... tool logic
+  }
+);
 ```
 
 **Tool Registration:**
 
 ```typescript
 function registerTools(server: McpServer, env: Env) {
-  // Public tools
+  // Open tools (Phase 1: all tools are Open)
   server.tool(
     "search_knowledge",
     "Search the SuperBenefit knowledge base for documents about DAO patterns, " +
@@ -1366,6 +1147,11 @@ function registerTools(server: McpServer, env: Env) {
       }).optional(),
     },
     async ({ query, filters }) => {
+      const authContext = await resolveAuthContext(env);
+      const access = checkTierAccess('open', authContext);
+      if (!access.allowed) {
+        return { content: [{ type: "text", text: `Requires ${access.requiredTier} access.` }], isError: true };
+      }
       const results = await searchKnowledge(query, filters || {}, {}, env);
       return { content: [{ type: "text", text: JSON.stringify(results, null, 2) }] };
     }
@@ -1377,6 +1163,11 @@ function registerTools(server: McpServer, env: Env) {
     "Use this when users ask 'what is X?' for DAO/web3 terminology.",
     { term: z.string().describe("Term to define") },
     async ({ term }) => {
+      const authContext = await resolveAuthContext(env);
+      const access = checkTierAccess('open', authContext);
+      if (!access.allowed) {
+        return { content: [{ type: "text", text: `Requires ${access.requiredTier} access.` }], isError: true };
+      }
       const definition = await getTermDefinition(term, env);
       return {
         content: [{
@@ -1392,6 +1183,11 @@ function registerTools(server: McpServer, env: Env) {
     "Search lexicon entries by keyword. Returns matching terms with definitions.",
     { keyword: z.string().describe("Keyword to search") },
     async ({ keyword }) => {
+      const authContext = await resolveAuthContext(env);
+      const access = checkTierAccess('open', authContext);
+      if (!access.allowed) {
+        return { content: [{ type: "text", text: `Requires ${access.requiredTier} access.` }], isError: true };
+      }
       const results = await searchLexicon(keyword, env);
       return { content: [{ type: "text", text: JSON.stringify(results, null, 2) }] };
     }
@@ -1402,6 +1198,11 @@ function registerTools(server: McpServer, env: Env) {
     "List all groups/cells in the SuperBenefit ecosystem.",
     {},
     async () => {
+      const authContext = await resolveAuthContext(env);
+      const access = checkTierAccess('open', authContext);
+      if (!access.allowed) {
+        return { content: [{ type: "text", text: `Requires ${access.requiredTier} access.` }], isError: true };
+      }
       const groups = await listGroups(env);
       return { content: [{ type: "text", text: JSON.stringify(groups, null, 2) }] };
     }
@@ -1412,82 +1213,65 @@ function registerTools(server: McpServer, env: Env) {
     "List creative releases with their metadata.",
     {},
     async () => {
+      const authContext = await resolveAuthContext(env);
+      const access = checkTierAccess('open', authContext);
+      if (!access.allowed) {
+        return { content: [{ type: "text", text: `Requires ${access.requiredTier} access.` }], isError: true };
+      }
       const releases = await listReleases(env);
       return { content: [{ type: "text", text: JSON.stringify(releases, null, 2) }] };
     }
   );
 
-  // Member tools (tier-gated)
   server.tool(
     "get_document",
     "Get the full content of a document by its contentType and ID. " +
-    "Requires member access.",
+    "Requires members access (Phase 3).",
     {
       contentType: ContentTypeSchema.describe("Content type of the document"),
       id: z.string().describe("Document ID"),
     },
-    requireTier('member', async ({ contentType, id }, context) => {
+    async ({ contentType, id }) => {
+      const authContext = await resolveAuthContext(env);
+      // Phase 1: temporarily 'open'; will become 'members' in Phase 3
+      const access = checkTierAccess('open', authContext);
+      if (!access.allowed) {
+        return { content: [{ type: "text", text: `Requires ${access.requiredTier} access.` }], isError: true };
+      }
       const doc = await getDocument(contentType, id, env);
       if (!doc) {
         return { content: [{ type: "text", text: "Document not found" }], isError: true };
       }
       return { content: [{ type: "text", text: JSON.stringify(doc, null, 2) }] };
-    })
+    }
   );
 
   server.tool(
     "search_with_documents",
     "Search and return full document content for results. " +
-    "Requires member access.",
+    "Requires members access (Phase 3).",
     {
       query: z.string().describe("Search query"),
       filters: SearchFiltersSchema.optional(),
     },
-    requireTier('member', async ({ query, filters }, context) => {
+    async ({ query, filters }) => {
+      const authContext = await resolveAuthContext(env);
+      // Phase 1: temporarily 'open'; will become 'members' in Phase 3
+      const access = checkTierAccess('open', authContext);
+      if (!access.allowed) {
+        return { content: [{ type: "text", text: `Requires ${access.requiredTier} access.` }], isError: true };
+      }
       const results = await searchKnowledge(query, filters || {}, { includeDocuments: true }, env);
       return { content: [{ type: "text", text: JSON.stringify(results, null, 2) }] };
-    })
-  );
-
-  server.tool(
-    "save_link",
-    "Save a new link to the library. Requires member access.",
-    {
-      url: z.string().url().describe("URL to save"),
-      title: z.string().describe("Link title"),
-      description: z.string().optional().describe("Brief description"),
-    },
-    requireTier('member', async (params, context) => {
-      await saveLink(params, context.props.address, env);
-      return { content: [{ type: "text", text: "Link saved successfully" }] };
-    })
-  );
-
-  // Vibecoder tools
-  server.tool(
-    "create_draft",
-    "Create a new draft document in the knowledge base. " +
-    "Requires vibecoder (contributor) access.",
-    {
-      contentType: ContentTypeSchema.describe("Type of content to create"),
-      title: z.string().describe("Document title"),
-      content: z.string().describe("Markdown content"),
-    },
-    requireTier('vibecoder', async (params, context) => {
-      const draft = await createDraft(params, context.props.address, env);
-      return { content: [{ type: "text", text: JSON.stringify(draft, null, 2) }] };
-    })
+    }
   );
 }
 ```
 
-### 7.4 Resources
-
-Resources provide read-only context data that clients can inject into conversations.
+### 7.5 Resources
 
 ```typescript
 function registerResources(server: McpServer, env: Env) {
-  // System prompt for knowledge search
   server.resource(
     "prompts/knowledge-search",
     "mcp://superbenefit/prompts/knowledge-search",
@@ -1504,7 +1288,6 @@ function registerResources(server: McpServer, env: Env) {
     })
   );
 
-  // Ontology documentation
   server.resource(
     "data/ontology",
     "mcp://superbenefit/data/ontology",
@@ -1521,7 +1304,6 @@ function registerResources(server: McpServer, env: Env) {
     })
   );
 
-  // Groups list
   server.resource(
     "data/groups",
     "mcp://superbenefit/data/groups",
@@ -1541,7 +1323,6 @@ function registerResources(server: McpServer, env: Env) {
     }
   );
 
-  // Releases list
   server.resource(
     "data/releases",
     "mcp://superbenefit/data/releases",
@@ -1563,13 +1344,10 @@ function registerResources(server: McpServer, env: Env) {
 }
 ```
 
-### 7.5 Prompts
-
-Prompts are workflow templates that users explicitly invoke.
+### 7.6 Prompts
 
 ```typescript
 function registerPrompts(server: McpServer, env: Env) {
-  // Research workflow
   server.prompt(
     "research-topic",
     "Research a topic comprehensively across the SuperBenefit knowledge base",
@@ -1604,7 +1382,6 @@ Use the search_knowledge and define_term tools as needed.`
     })
   );
 
-  // Explain a DAO pattern
   server.prompt(
     "explain-pattern",
     "Explain a DAO pattern with examples and context from SuperBenefit's experience",
@@ -1631,7 +1408,6 @@ Use the search_knowledge and define_term tools to find accurate information.`
     })
   );
 
-  // Compare governance approaches
   server.prompt(
     "compare-practices",
     "Compare two governance or coordination practices",
@@ -1661,61 +1437,33 @@ Use the search_knowledge tool to find relevant documentation for both.`
 }
 ```
 
-### 7.6 OAuthProvider Integration
-
-```typescript
-// src/index.ts
-import { OAuthProvider } from "workers-oauth-provider";
-import { McpHandler } from "./mcp/server";
-import { SIWEHandler } from "./auth/oauth";
-
-export default new OAuthProvider({
-  apiRoute: "/mcp",
-  apiHandler: McpHandler,
-  defaultHandler: SIWEHandler,
-  refreshTokenTTL: 2592000, // 30 days
-  
-  tokenExchangeCallback: async ({ props, grantType }) => {
-    if (grantType === "refresh_token") {
-      // Refresh roles on token renewal
-      const roles = await checkHatsRoles(props.address, optimismClient);
-      const newTier = roles.isContributor ? "vibecoder"
-                    : roles.isMember ? "member" : "public";
-      return {
-        accessTokenProps: { ...props, roles, tier: newTier },
-        newProps: { ...props, roles, tier: newTier }
-      };
-    }
-    return {};
-  }
-});
-```
-
 ### 7.7 Tool Inventory Summary
 
-| Tool | Description | Tier |
-|------|-------------|------|
-| `search_knowledge` | Semantic search across knowledge base | Public |
-| `define_term` | Get lexicon definition | Public |
-| `search_lexicon` | Search lexicon entries | Public |
-| `list_groups` | List groups/cells | Public |
-| `list_releases` | List creative releases | Public |
-| `get_document` | Get full document by ID | Member |
-| `search_with_documents` | Search with full documents | Member |
-| `save_link` | Save link to library | Member |
-| `create_draft` | Create draft document | Vibecoder |
+| Tool | Description | Phase 1 Tier | Target Tier |
+|------|-------------|--------------|-------------|
+| `search_knowledge` | Semantic search across knowledge base | Open | Open |
+| `define_term` | Get lexicon definition | Open | Open |
+| `search_lexicon` | Search lexicon entries | Open | Open |
+| `list_groups` | List groups/cells | Open | Open |
+| `list_releases` | List creative releases | Open | Open |
+| `get_document` | Get full document by ID | Open* | Members |
+| `search_with_documents` | Search with full documents | Open* | Members |
+
+*Temporarily Open in Phase 1; will gate to Members tier when porch Phase 3 enables authorization.
+
+> **Removed in v0.12**: `save_link` and `create_draft` tools — write operations deferred to Phase 2+ when stateful agents with `needsApproval` are available.
 
 ### 7.8 Client Compatibility
 
 | Client | Transport | Auth | Resources | Prompts |
 |--------|-----------|------|-----------|---------|
-| Claude Desktop | SSE (via mcp-remote) | OAuth | ✅ | ✅ |
-| Claude Code | Streamable HTTP | OAuth | ✅ | ✅ |
-| Cursor | Streamable HTTP | OAuth | ⚠️ Limited | ⚠️ Limited |
-| Windsurf | Streamable HTTP | OAuth | ⚠️ Limited | ⚠️ Limited |
-| VS Code | Streamable HTTP | OAuth | ✅ | ✅ |
-| MCP Inspector | Streamable HTTP | OAuth | ✅ | ✅ |
-| Workers AI Playground | Streamable HTTP | OAuth | ⚠️ Unknown | ⚠️ Unknown |
+| Claude Desktop | SSE (via mcp-remote) | N/A (Phase 1) | ✅ | ✅ |
+| Claude Code | Streamable HTTP | N/A (Phase 1) | ✅ | ✅ |
+| Cursor | Streamable HTTP | N/A (Phase 1) | ⚠️ Limited | ⚠️ Limited |
+| Windsurf | Streamable HTTP | N/A (Phase 1) | ⚠️ Limited | ⚠️ Limited |
+| VS Code | Streamable HTTP | N/A (Phase 1) | ✅ | ✅ |
+| MCP Inspector | Streamable HTTP | N/A (Phase 1) | ✅ | ✅ |
+| Workers AI Playground | Streamable HTTP | N/A (Phase 1) | ⚠️ Unknown | ⚠️ Unknown |
 
 ---
 
@@ -1728,14 +1476,12 @@ import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 
 const api = new OpenAPIHono<{ Bindings: Env }>();
 
-// CORS for all routes
 api.use('*', cors({
   origin: '*',
   methods: ['GET', 'HEAD', 'OPTIONS'],
   maxAge: 86400
 }));
 
-// Cache headers
 const cacheHeaders = {
   'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600'
 };
@@ -1821,14 +1567,15 @@ Auto-generated from route definitions.
 
 ## 9. Future Phases
 
-### 9.1 Phase 2: Stateful Services
+### 9.1 Phase 2: Stateful Services + Public Tier
 
 **Architecture:** `AIChatAgent` (Durable Object) + AI SDK `tool()` function
+
+**Access:** Public tier via Cloudflare Access for SaaS (see `porch-spec.md` Phase 2)
 
 ```typescript
 import { AIChatAgent } from "agents/ai-chat-agent";
 import { streamText, tool } from "ai";
-import { z } from "zod";
 
 export class KnowledgeChatAgent extends AIChatAgent<Env> {
   
@@ -1851,7 +1598,6 @@ export class KnowledgeChatAgent extends AIChatAgent<Env> {
         contentType: ContentTypeSchema,
         body: z.string(),
       }),
-      // Human-in-the-loop approval
       needsApproval: async () => true,
       execute: async (params) => {
         return await createGitHubPR(params, this.env);
@@ -1873,15 +1619,11 @@ export class KnowledgeChatAgent extends AIChatAgent<Env> {
 }
 ```
 
-**Capabilities:**
-- Resumable streaming (built-in)
-- Persistent conversation history
-- Human-in-the-loop via `needsApproval`
-- Multi-step tool chains
-
-### 9.2 Phase 3: Knowledge Commons (Federation)
+### 9.2 Phase 3: Knowledge Commons + Members Tier
 
 **Architecture:** `Agent` as MCP Client connecting to partner DAOs
+
+**Access:** Members tier via Hats Protocol / token gating (see `porch-spec.md` Phase 3)
 
 ```typescript
 import { Agent } from "agents";
@@ -1890,7 +1632,7 @@ import { streamText } from "ai";
 export class CommonsAgent extends Agent<Env> {
   
   partnerServers = [
-    { name: "SuperBenefit", url: "https://mcp.superbenefit.xyz/mcp" },
+    { name: "SuperBenefit", url: "https://porch.superbenefit.dev/mcp" },
     { name: "DAO Primitives", url: "https://mcp.daoprim.xyz/mcp" },
     { name: "Commons Stack", url: "https://mcp.commonsstack.org/mcp" },
   ];
@@ -1905,7 +1647,6 @@ export class CommonsAgent extends Agent<Env> {
   }
 
   async onRequest(request: Request) {
-    // Get ALL tools from ALL connected MCP servers
     const partnerTools = this.mcp.getAITools();
     const servers = this.getMcpServers();
     
@@ -1924,12 +1665,6 @@ Search across ALL sources to provide comprehensive analysis.`,
   }
 }
 ```
-
-**Capabilities:**
-- `addMcpServer()` connects to any MCP server
-- `this.mcp.getAITools()` returns unified tool set
-- Automatic OAuth handling
-- Tool namespacing prevents conflicts
 
 ---
 
@@ -1981,10 +1716,8 @@ export const errorHandler = (err: Error, c: Context) => {
 | R2 Bucket | `superbenefit-knowledge` | Document storage |
 | Vectorize Index | `superbenefit-knowledge-idx` | Vector search |
 | Queue | `superbenefit-knowledge-sync` | Event processing |
-| KV Namespace | `OAUTH_KV` | OAuth tokens |
-| KV Namespace | `NONCE_KV` | SIWE nonces |
-| KV Namespace | `ROLE_CACHE` | Hats roles |
-| KV Namespace | `ENS_CACHE` | ENS resolution |
+| KV Namespace | `ROLE_CACHE` | Hats roles (dormant) |
+| KV Namespace | `ENS_CACHE` | ENS resolution (dormant) |
 | KV Namespace | `RERANK_CACHE` | Rerank results |
 | KV Namespace | `SYNC_STATE` | Sync metadata |
 
@@ -2016,8 +1749,6 @@ npx wrangler vectorize create-metadata-index superbenefit-knowledge-idx \
 npx wrangler queues create superbenefit-knowledge-sync
 
 # Create KV namespaces
-npx wrangler kv:namespace create OAUTH_KV
-npx wrangler kv:namespace create NONCE_KV
 npx wrangler kv:namespace create ROLE_CACHE
 npx wrangler kv:namespace create ENS_CACHE
 npx wrangler kv:namespace create RERANK_CACHE
@@ -2034,13 +1765,15 @@ npx wrangler r2 bucket notification create superbenefit-knowledge \
 
 ```
 # Required secrets (set via wrangler secret put)
-GITHUB_CLIENT_ID=<oauth_client_id>
-GITHUB_CLIENT_SECRET=<oauth_client_secret>
 GITHUB_TOKEN=<fine_grained_pat>
 GITHUB_WEBHOOK_SECRET=<webhook_secret>
-COOKIE_ENCRYPTION_KEY=<32_byte_hex>
+
+# Dormant secrets (needed for Phase 3)
 MAINNET_RPC_URL=<ethereum_mainnet_rpc>
 OPTIMISM_RPC_URL=<optimism_rpc>
+
+# Phase 2 addition
+# CF_ACCESS_AUD=<access_application_audience_tag>
 ```
 
 ---
@@ -2052,7 +1785,7 @@ OPTIMISM_RPC_URL=<optimism_rpc>
 {
   "name": "superbenefit-knowledge",
   "main": "src/index.ts",
-  "compatibility_date": "2024-12-01",
+  "compatibility_date": "2025-01-01",
   
   "r2_buckets": [{
     "binding": "KNOWLEDGE",
@@ -2073,8 +1806,6 @@ OPTIMISM_RPC_URL=<optimism_rpc>
   },
   
   "kv_namespaces": [
-    { "binding": "OAUTH_KV", "id": "<kv_id>" },
-    { "binding": "NONCE_KV", "id": "<kv_id>" },
     { "binding": "ROLE_CACHE", "id": "<kv_id>" },
     { "binding": "ENS_CACHE", "id": "<kv_id>" },
     { "binding": "RERANK_CACHE", "id": "<kv_id>" },
@@ -2106,25 +1837,27 @@ interface Env {
   AI: Ai;
   SYNC_WORKFLOW: Workflow;
   
-  // KV
-  OAUTH_KV: KVNamespace;
-  NONCE_KV: KVNamespace;
-  ROLE_CACHE: KVNamespace;
-  ENS_CACHE: KVNamespace;
+  // KV (active)
   RERANK_CACHE: KVNamespace;
   SYNC_STATE: KVNamespace;
   
-  // Secrets
-  GITHUB_CLIENT_ID: string;
-  GITHUB_CLIENT_SECRET: string;
+  // KV (dormant — Phase 3)
+  ROLE_CACHE: KVNamespace;
+  ENS_CACHE: KVNamespace;
+  
+  // Secrets (active)
   GITHUB_TOKEN: string;
   GITHUB_WEBHOOK_SECRET: string;
-  COOKIE_ENCRYPTION_KEY: string;
+  
+  // Secrets (dormant — Phase 3)
   MAINNET_RPC_URL: string;
   OPTIMISM_RPC_URL: string;
   
   // Config
   GITHUB_REPO: string;
+  
+  // Phase 2 addition
+  CF_ACCESS_AUD?: string;
 }
 ```
 
@@ -2156,17 +1889,18 @@ interface Env {
     "agents": "^0.3.0",
     "hono": "^4.0.0",
     "viem": "^2.21.0",
-    "workers-oauth-provider": "^0.2.0",
     "yaml": "^2.3.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20240620.0",
+    "@cloudflare/workers-types": "^4.20250101.0",
     "typescript": "^5.5.0",
     "wrangler": "^3.60.0"
   }
 }
 ```
+
+> **Removed in v0.12**: `workers-oauth-provider` — no longer a Worker dependency. Phase 2 auth handled by Cloudflare Access for SaaS at the infrastructure layer.
 
 ---
 
@@ -2174,6 +1908,7 @@ interface Env {
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 0.12 | 2026-02-06 | Porch framework: replaced OAuthProvider with authContext injection, new tier model (open/public/members), routing split (MCP direct, REST through Hono), removed OAUTH_KV/NONCE_KV, removed workers-oauth-provider dependency, validated against Feb 2026 Cloudflare docs, added MCP Server Portals reference |
 | 0.11 | 2026-02-01 | MCP primitives: stateless createMcpHandler pattern, Resources section, Prompts section, permission wrapper pattern, client compatibility matrix, Phase 2/3 architecture, updated dependencies |
 | 0.10 | 2026-02-01 | ID-based retrieval pattern: documented Vector→R2 mapping, metadata structure for reranking, content truncation strategy, retrieval flow stages |
 | 0.9 | 2026-02-01 | Ontology alignment: file type hierarchy, updated schemas, Vectorize indexes, prerequisites section |

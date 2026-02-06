@@ -5,23 +5,22 @@
 // Augment the Cloudflare namespace (used by cloudflare:workers import)
 declare namespace Cloudflare {
   interface Env {
-    // Secrets
-    GITHUB_CLIENT_ID: string;
-    GITHUB_CLIENT_SECRET: string;
-    COOKIE_ENCRYPTION_KEY: string;
+    // Secrets (active)
     GITHUB_TOKEN: string;
     GITHUB_WEBHOOK_SECRET: string;
     GITHUB_REPO: string;
+
+    // Secrets (dormant — Phase 3)
     MAINNET_RPC_URL: string;
     OPTIMISM_RPC_URL: string;
 
-    // KV Namespaces (deferred until created)
-    OAUTH_KV: KVNamespace;
-    NONCE_KV: KVNamespace;
-    ROLE_CACHE: KVNamespace;
-    ENS_CACHE: KVNamespace;
+    // KV Namespaces (active)
     RERANK_CACHE: KVNamespace;
     SYNC_STATE: KVNamespace;
+
+    // KV Namespaces (dormant — Phase 3)
+    ROLE_CACHE: KVNamespace;
+    ENS_CACHE: KVNamespace;
 
     // R2 Bucket
     KNOWLEDGE: R2Bucket;
@@ -29,30 +28,35 @@ declare namespace Cloudflare {
     // Vectorize Index
     VECTORIZE: VectorizeIndex;
 
+    // AI
+    AI: Ai;
+
     // Workflow
     SYNC_WORKFLOW: Workflow;
+
+    // Phase 2 (optional, unused until then)
+    CF_ACCESS_AUD?: string;
   }
 }
 
 // Also extend the global Env interface (used by Hono bindings)
 interface Env {
-  // Secrets
-  GITHUB_CLIENT_ID: string;
-  GITHUB_CLIENT_SECRET: string;
-  COOKIE_ENCRYPTION_KEY: string;
+  // Secrets (active)
   GITHUB_TOKEN: string;
   GITHUB_WEBHOOK_SECRET: string;
   GITHUB_REPO: string;
+
+  // Secrets (dormant — Phase 3)
   MAINNET_RPC_URL: string;
   OPTIMISM_RPC_URL: string;
 
-  // KV Namespaces (deferred until created)
-  OAUTH_KV: KVNamespace;
-  NONCE_KV: KVNamespace;
-  ROLE_CACHE: KVNamespace;
-  ENS_CACHE: KVNamespace;
+  // KV Namespaces (active)
   RERANK_CACHE: KVNamespace;
   SYNC_STATE: KVNamespace;
+
+  // KV Namespaces (dormant — Phase 3)
+  ROLE_CACHE: KVNamespace;
+  ENS_CACHE: KVNamespace;
 
   // R2 Bucket
   KNOWLEDGE: R2Bucket;
@@ -60,6 +64,12 @@ interface Env {
   // Vectorize Index
   VECTORIZE: VectorizeIndex;
 
+  // AI
+  AI: Ai;
+
   // Workflow
   SYNC_WORKFLOW: Workflow;
+
+  // Phase 2 (optional, unused until then)
+  CF_ACCESS_AUD?: string;
 }

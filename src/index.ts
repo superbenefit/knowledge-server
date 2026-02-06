@@ -2,40 +2,77 @@
  * Main entry point for the SuperBenefit Knowledge Server.
  *
  * Routes:
- * - /api/v1/* — Public REST API (no auth)
- * - /mcp/* — MCP server (OAuth/SIWE protected)
- * - /authorize, /token, /register — OAuth endpoints
- * - /siwe/* — SIWE authentication flow
+ * - /api/v1/* — Public REST API (no auth, through Hono)
+ * - /mcp, /mcp/* — MCP server (direct to handler, bypasses Hono)
+ * - /webhook — GitHub webhook (direct handler)
+ *
+ * Phase 1: No authentication. All tools are Open tier.
+ * Phase 2: Add Access JWT parsing before MCP dispatch.
  */
 
-import OAuthProvider from '@cloudflare/workers-oauth-provider';
 import { Hono } from 'hono';
-import { GitHubHandler } from './github-handler';
 import { api } from './api/routes';
 import { McpHandler } from './mcp';
 import { handleVectorizeQueue } from './consumers/vectorize';
+import { verifyWebhookSignature, isExcluded } from './sync/github';
+import type { GitHubPushEvent } from './types/sync';
 
 // Re-export workflow class so Cloudflare can discover it via wrangler.jsonc class_name
 export { KnowledgeSyncWorkflow } from './sync/workflow';
 
 // ---------------------------------------------------------------------------
-// OAuth Provider — wraps MCP handler with OAuth/SIWE auth
+// Webhook handler
 // ---------------------------------------------------------------------------
 
-// Type assertions needed because OAuthProvider uses generic `unknown` env
-// while our handlers are typed with specific Env binding.
-// The handlers implement the required fetch signature but with stricter env types.
-const oauthProvider = new OAuthProvider({
-  apiHandler: McpHandler as { fetch: ExportedHandlerFetchHandler },
-  apiRoute: '/mcp',
-  authorizeEndpoint: '/authorize',
-  clientRegistrationEndpoint: '/register',
-  defaultHandler: GitHubHandler as { fetch: ExportedHandlerFetchHandler },
-  tokenEndpoint: '/token',
-});
+async function handleWebhook(request: Request, env: Env): Promise<Response> {
+  const body = await request.text();
+  const signature = request.headers.get('x-hub-signature-256');
+
+  if (!await verifyWebhookSignature(body, signature, env.GITHUB_WEBHOOK_SECRET)) {
+    return new Response('Invalid signature', { status: 403 });
+  }
+
+  const payload: GitHubPushEvent = JSON.parse(body);
+
+  // Only process pushes to main branch
+  if (payload.ref !== 'refs/heads/main') {
+    return Response.json({ status: 'ignored', reason: 'not main branch' });
+  }
+
+  // Collect changed and deleted files from all commits
+  const changedFiles = payload.commits
+    .flatMap((c) => [...c.added, ...c.modified])
+    .filter((f) => f.endsWith('.md') && !isExcluded(f));
+  const deletedFiles = payload.commits
+    .flatMap((c) => c.removed)
+    .filter((f) => f.endsWith('.md'));
+
+  // Deduplicate
+  const uniqueChanged = [...new Set(changedFiles)];
+  const uniqueDeleted = [...new Set(deletedFiles)];
+
+  if (uniqueChanged.length === 0 && uniqueDeleted.length === 0) {
+    return Response.json({ status: 'ignored', reason: 'no markdown files changed' });
+  }
+
+  // Trigger sync workflow
+  await env.SYNC_WORKFLOW.create({
+    params: {
+      changedFiles: uniqueChanged,
+      deletedFiles: uniqueDeleted,
+      commitSha: payload.after,
+    },
+  });
+
+  return Response.json({
+    status: 'ok',
+    changed: uniqueChanged.length,
+    deleted: uniqueDeleted.length,
+  });
+}
 
 // ---------------------------------------------------------------------------
-// Main Hono app — mounts public REST API and delegates MCP/OAuth routes
+// Hono app — mounts public REST API
 // ---------------------------------------------------------------------------
 
 const app = new Hono<{ Bindings: Env }>();
@@ -43,14 +80,26 @@ const app = new Hono<{ Bindings: Env }>();
 // Public REST API (no auth required)
 app.route('/api/v1', api);
 
-// MCP server + OAuth endpoints — delegate to OAuthProvider
-app.all('*', (c) => oauthProvider.fetch(c.req.raw, c.env, c.executionCtx));
-
 // ---------------------------------------------------------------------------
 // Export Worker module
 // ---------------------------------------------------------------------------
 
 export default {
-  fetch: app.fetch,
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url);
+
+    // MCP server — direct to handler, bypassing Hono
+    if (url.pathname === '/mcp' || url.pathname.startsWith('/mcp/')) {
+      return McpHandler.fetch(request, env, ctx);
+    }
+
+    // GitHub webhook
+    if (url.pathname === '/webhook' && request.method === 'POST') {
+      return handleWebhook(request, env);
+    }
+
+    // Everything else through Hono (REST API, health checks)
+    return app.fetch(request, env, ctx);
+  },
   queue: handleVectorizeQueue,
 };

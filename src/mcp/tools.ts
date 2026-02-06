@@ -1,65 +1,20 @@
 /**
- * MCP Tool registrations with tier-based permissions.
+ * MCP Tool registrations with porch access control framework.
  *
- * Tools by tier (spec section 7.2):
- * - public: search_knowledge, define_term, search_lexicon, list_groups, list_releases
- * - member: + get_document, search_with_documents, save_link
- * - vibecoder: + create_draft
+ * Phase 1: All tools are Open tier (no authentication required).
+ * Phase 3: get_document, search_with_documents become Members tier.
+ *
+ * See porch-spec.md v0.14 for tier definitions.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { getMcpAuthContext } from 'agents/mcp';
 import { z } from 'zod';
-import type { AccessTier, ContentType, R2Document } from '../types';
+import type { ContentType, R2Document } from '../types';
 import { ContentTypeSchema, SearchFiltersSchema } from '../types';
 import { searchKnowledge, getDocument } from '../retrieval';
 import { toR2Key, generateId } from '../types/storage';
-
-// ---------------------------------------------------------------------------
-// Permission helper (spec section 7.3)
-// ---------------------------------------------------------------------------
-
-const TIER_LEVEL: Record<AccessTier, number> = {
-  public: 0,
-  member: 1,
-  vibecoder: 2,
-};
-
-/**
- * Check if the current auth context has sufficient tier access.
- * Returns { allowed: true, tier, address } or { allowed: false, requiredTier }.
- */
-function checkTierAccess(requiredTier: AccessTier): {
-  allowed: boolean;
-  tier?: AccessTier;
-  address?: string;
-  requiredTier?: AccessTier;
-} {
-  const authContext = getMcpAuthContext();
-  const tier = (authContext?.props?.tier as AccessTier) || 'public';
-  const address = authContext?.props?.address as string | undefined;
-
-  if (TIER_LEVEL[tier] >= TIER_LEVEL[requiredTier]) {
-    return { allowed: true, tier, address };
-  }
-
-  return { allowed: false, requiredTier };
-}
-
-/**
- * Create an access denied response for tier-gated tools.
- */
-function accessDenied(requiredTier: AccessTier) {
-  return {
-    content: [
-      {
-        type: 'text' as const,
-        text: `Access denied. This tool requires ${requiredTier} access.`,
-      },
-    ],
-    isError: true,
-  };
-}
+import { resolveAuthContext } from '../auth/resolve';
+import { checkTierAccess } from '../auth/check';
 
 // ---------------------------------------------------------------------------
 // Helper functions
@@ -148,7 +103,7 @@ async function listReleases(
  */
 async function saveLink(
   params: { url: string; title: string; description?: string },
-  authorAddress: string,
+  authorId: string,
   env: Env,
 ): Promise<void> {
   const id = generateId(params.title.toLowerCase().replace(/\s+/g, '-') + '.md');
@@ -160,7 +115,7 @@ async function saveLink(
       title: params.title,
       description: params.description || '',
       url: params.url,
-      author: [authorAddress],
+      author: [authorId],
       date: new Date().toISOString(),
       publish: false, // Drafts until reviewed
       draft: true,
@@ -178,7 +133,7 @@ async function saveLink(
  */
 async function createDraft(
   params: { contentType: ContentType; title: string; content: string },
-  authorAddress: string,
+  authorId: string,
   env: Env,
 ): Promise<R2Document> {
   const id = generateId(params.title.toLowerCase().replace(/\s+/g, '-') + '.md');
@@ -189,7 +144,7 @@ async function createDraft(
     metadata: {
       title: params.title,
       type: params.contentType,
-      author: [authorAddress],
+      author: [authorId],
       date: new Date().toISOString(),
       publish: false,
       draft: true,
@@ -209,7 +164,7 @@ async function createDraft(
 
 export function registerTools(server: McpServer, env: Env): void {
   // -------------------------------------------------------------------------
-  // Public tools
+  // Open tools (Phase 1: all tools are open)
   // -------------------------------------------------------------------------
 
   server.tool(
@@ -230,6 +185,14 @@ export function registerTools(server: McpServer, env: Env): void {
         .optional(),
     },
     async ({ query, filters }) => {
+      const authContext = await resolveAuthContext(env);
+      const access = checkTierAccess('open', authContext);
+      if (!access.allowed) {
+        return {
+          content: [{ type: 'text', text: `Requires ${access.requiredTier} access. Current: ${access.currentTier}.` }],
+          isError: true,
+        };
+      }
       const results = await searchKnowledge(query, filters || {}, {}, env);
       return { content: [{ type: 'text', text: JSON.stringify(results, null, 2) }] };
     },
@@ -241,6 +204,14 @@ export function registerTools(server: McpServer, env: Env): void {
       "Use this when users ask 'what is X?' for DAO/web3 terminology.",
     { term: z.string().describe('Term to define') },
     async ({ term }) => {
+      const authContext = await resolveAuthContext(env);
+      const access = checkTierAccess('open', authContext);
+      if (!access.allowed) {
+        return {
+          content: [{ type: 'text', text: `Requires ${access.requiredTier} access. Current: ${access.currentTier}.` }],
+          isError: true,
+        };
+      }
       const definition = await getTermDefinition(term, env);
       return {
         content: [
@@ -258,35 +229,66 @@ export function registerTools(server: McpServer, env: Env): void {
     'Search lexicon entries by keyword. Returns matching terms with definitions.',
     { keyword: z.string().describe('Keyword to search') },
     async ({ keyword }) => {
+      const authContext = await resolveAuthContext(env);
+      const access = checkTierAccess('open', authContext);
+      if (!access.allowed) {
+        return {
+          content: [{ type: 'text', text: `Requires ${access.requiredTier} access. Current: ${access.currentTier}.` }],
+          isError: true,
+        };
+      }
       const results = await searchLexicon(keyword, env);
       return { content: [{ type: 'text', text: JSON.stringify(results, null, 2) }] };
     },
   );
 
   server.tool('list_groups', 'List all groups/cells in the SuperBenefit ecosystem.', {}, async () => {
+    const authContext = await resolveAuthContext(env);
+    const access = checkTierAccess('open', authContext);
+    if (!access.allowed) {
+      return {
+        content: [{ type: 'text', text: `Requires ${access.requiredTier} access. Current: ${access.currentTier}.` }],
+        isError: true,
+      };
+    }
     const groups = await listGroups(env);
     return { content: [{ type: 'text', text: JSON.stringify(groups, null, 2) }] };
   });
 
   server.tool('list_releases', 'List creative releases with their metadata.', {}, async () => {
+    const authContext = await resolveAuthContext(env);
+    const access = checkTierAccess('open', authContext);
+    if (!access.allowed) {
+      return {
+        content: [{ type: 'text', text: `Requires ${access.requiredTier} access. Current: ${access.currentTier}.` }],
+        isError: true,
+      };
+    }
     const releases = await listReleases(env);
     return { content: [{ type: 'text', text: JSON.stringify(releases, null, 2) }] };
   });
 
   // -------------------------------------------------------------------------
-  // Member tools (tier-gated)
+  // Phase 1: These tools are temporarily Open; will become Members in Phase 3
   // -------------------------------------------------------------------------
 
   server.tool(
     'get_document',
-    'Get the full content of a document by its contentType and ID. ' + 'Requires member access.',
+    'Get the full content of a document by its contentType and ID.',
     {
       contentType: ContentTypeSchema.describe('Content type of the document'),
       id: z.string().describe('Document ID'),
     },
     async ({ contentType, id }) => {
-      const access = checkTierAccess('member');
-      if (!access.allowed) return accessDenied(access.requiredTier!);
+      const authContext = await resolveAuthContext(env);
+      // Phase 1: 'open'; Phase 3: change to 'members'
+      const access = checkTierAccess('open', authContext);
+      if (!access.allowed) {
+        return {
+          content: [{ type: 'text', text: `Requires ${access.requiredTier} access. Current: ${access.currentTier}.` }],
+          isError: true,
+        };
+      }
 
       const doc = await getDocument(contentType, id, env);
       if (!doc) {
@@ -298,14 +300,21 @@ export function registerTools(server: McpServer, env: Env): void {
 
   server.tool(
     'search_with_documents',
-    'Search and return full document content for results. ' + 'Requires member access.',
+    'Search and return full document content for results.',
     {
       query: z.string().describe('Search query'),
       filters: SearchFiltersSchema.optional(),
     },
     async ({ query, filters }) => {
-      const access = checkTierAccess('member');
-      if (!access.allowed) return accessDenied(access.requiredTier!);
+      const authContext = await resolveAuthContext(env);
+      // Phase 1: 'open'; Phase 3: change to 'members'
+      const access = checkTierAccess('open', authContext);
+      if (!access.allowed) {
+        return {
+          content: [{ type: 'text', text: `Requires ${access.requiredTier} access. Current: ${access.currentTier}.` }],
+          isError: true,
+        };
+      }
 
       const results = await searchKnowledge(query, filters || {}, { includeDocuments: true }, env);
       return { content: [{ type: 'text', text: JSON.stringify(results, null, 2) }] };
@@ -314,38 +323,50 @@ export function registerTools(server: McpServer, env: Env): void {
 
   server.tool(
     'save_link',
-    'Save a new link to the library. Requires member access.',
+    'Save a new link to the library.',
     {
       url: z.string().url().describe('URL to save'),
       title: z.string().describe('Link title'),
       description: z.string().optional().describe('Brief description'),
     },
     async (params) => {
-      const access = checkTierAccess('member');
-      if (!access.allowed) return accessDenied(access.requiredTier!);
+      const authContext = await resolveAuthContext(env);
+      // Phase 1: 'open'; Phase 3: change to 'members'
+      const access = checkTierAccess('open', authContext);
+      if (!access.allowed) {
+        return {
+          content: [{ type: 'text', text: `Requires ${access.requiredTier} access. Current: ${access.currentTier}.` }],
+          isError: true,
+        };
+      }
 
-      await saveLink(params, access.address || 'anonymous', env);
+      const authorId = authContext.identity?.userId || 'anonymous';
+      await saveLink(params, authorId, env);
       return { content: [{ type: 'text', text: 'Link saved successfully' }] };
     },
   );
 
-  // -------------------------------------------------------------------------
-  // Vibecoder tools
-  // -------------------------------------------------------------------------
-
   server.tool(
     'create_draft',
-    'Create a new draft document in the knowledge base. ' + 'Requires vibecoder (contributor) access.',
+    'Create a new draft document in the knowledge base.',
     {
       contentType: ContentTypeSchema.describe('Type of content to create'),
       title: z.string().describe('Document title'),
       content: z.string().describe('Markdown content'),
     },
     async (params) => {
-      const access = checkTierAccess('vibecoder');
-      if (!access.allowed) return accessDenied(access.requiredTier!);
+      const authContext = await resolveAuthContext(env);
+      // Phase 1: 'open'; Phase 3: change to 'members'
+      const access = checkTierAccess('open', authContext);
+      if (!access.allowed) {
+        return {
+          content: [{ type: 'text', text: `Requires ${access.requiredTier} access. Current: ${access.currentTier}.` }],
+          isError: true,
+        };
+      }
 
-      const draft = await createDraft(params, access.address || 'anonymous', env);
+      const authorId = authContext.identity?.userId || 'anonymous';
+      const draft = await createDraft(params, authorId, env);
       return { content: [{ type: 'text', text: JSON.stringify(draft, null, 2) }] };
     },
   );
