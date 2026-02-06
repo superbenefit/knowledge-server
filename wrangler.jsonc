@@ -9,13 +9,10 @@
 	],
 	/**
 	 * Secrets (set via `npx wrangler secret put <NAME>`):
-	 *   GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, COOKIE_ENCRYPTION_KEY,
-	 *   GITHUB_WEBHOOK_SECRET, GITHUB_TOKEN,
-	 *   OPTIMISM_RPC_URL, MAINNET_RPC_URL, WALLETCONNECT_PROJECT_ID
+	 *   GITHUB_WEBHOOK_SECRET, GITHUB_TOKEN, GITHUB_REPO,
+	 *   OPTIMISM_RPC_URL (dormant), MAINNET_RPC_URL (dormant)
 	 */
 	"kv_namespaces": [
-		{ "binding": "OAUTH_KV", "id": "3f72469f3ff84c96a01e8aff2f69447d" },
-		{ "binding": "NONCE_KV", "id": "490f98eae91d49b4bd4852dc72ea38bb" },
 		{ "binding": "ROLE_CACHE", "id": "e2e853c9a14d4aecbe32f2738a784ca3" },
 		{ "binding": "ENS_CACHE", "id": "2c1a4e9792644457b8ca7b98dfb412d7" },
 		{ "binding": "RERANK_CACHE", "id": "bcfbd064dc2b451dbd05a85410b33196" },

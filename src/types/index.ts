@@ -57,15 +57,16 @@ export type {
   Content,
 } from './content';
 
-// Auth (spec section 2)
+// Auth — porch access control framework (spec section 2)
 export {
   AccessTierSchema,
+  TIER_LEVEL,
+  IdentitySchema,
   HatsRoleSchema,
-  AuthPropsSchema,
+  AuthContextSchema,
   HATS_CONFIG,
-  TIER_TOOLS,
 } from './auth';
-export type { AccessTier, HatsRole, AuthProps } from './auth';
+export type { AccessTier, Identity, HatsRole, AuthContext } from './auth';
 
 // API (spec sections 6, 8)
 export {

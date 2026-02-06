@@ -1,4 +1,8 @@
-// SIWE verification
+// Porch access control framework (Phase 1: Open tier only)
+export { resolveAuthContext } from './resolve';
+export { checkTierAccess } from './check';
+
+// SIWE verification (dormant — Phase 3)
 export {
   createNonce,
   validateNonce,
@@ -7,9 +11,9 @@ export {
 } from './siwe-handler';
 export type { SiweVerificationResult } from './siwe-handler';
 
-// Hats Protocol role checking
+// Hats Protocol role checking (dormant — Phase 3)
 export { checkHatsRoles } from './hats';
 
-// ENS resolution
+// ENS resolution (dormant — Phase 3)
 export { resolveENS } from './ens';
 export type { EnsProfile } from './ens';

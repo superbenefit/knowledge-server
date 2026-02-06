@@ -2,10 +2,12 @@
  * Hats Protocol role checking on Optimism (chain 10).
  *
  * Checks whether an address wears the Contributor or Member hat
- * in SuperBenefit's Hats tree (tree 30) and returns the corresponding
- * access tier.
+ * in SuperBenefit's Hats tree (tree 30) and returns role information.
  *
  * Results are cached in ROLE_CACHE KV with a 5-minute TTL.
+ *
+ * DORMANT: This module is not used in Phase 1 (Open tier only).
+ * Active in Phase 3 when Members tier is enabled.
  */
 
 import { createPublicClient, http } from 'viem';
@@ -15,7 +17,7 @@ import {
   HATS_ABI,
   treeIdToTopHatId,
 } from '@hatsprotocol/sdk-v1-core';
-import type { AccessTier, HatsRole } from '../types/auth';
+import type { HatsRole } from '../types/auth';
 import { HATS_CONFIG } from '../types/auth';
 
 /**
@@ -89,13 +91,12 @@ export async function checkHatsRoles(
     }),
   ]);
 
-  const tier: AccessTier = isContributor
-    ? 'vibecoder'
-    : isMember
-      ? 'member'
-      : 'public';
+  // Collect hat IDs that the user wears
+  const hats: bigint[] = [];
+  if (isContributor) hats.push(HAT_IDS.contributor);
+  if (isMember) hats.push(HAT_IDS.member);
 
-  const result: HatsRole = { isContributor, isMember, tier };
+  const result: HatsRole = { hats, isContributor, isMember };
 
   // Cache result
   await env.ROLE_CACHE.put(cacheKey, JSON.stringify(result), {

@@ -34,11 +34,13 @@ function createKnowledgeServer(env: Env): McpServer {
 }
 
 /**
- * MCP handler for OAuthProvider integration.
+ * Stateless MCP handler.
  *
- * This is a stateless handler that creates a new McpServer instance
- * for each request. The server registers tools, resources, and prompts
- * but does not persist any state between requests.
+ * Creates a new McpServer instance for each request, registers tools,
+ * resources, and prompts, but does not persist any state between requests.
+ *
+ * Phase 1: No authentication. All tools are Open tier.
+ * Phase 2: authContext injection via createMcpHandler for Access JWT claims.
  */
 export const McpHandler = {
   async fetch(

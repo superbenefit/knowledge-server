@@ -1,9 +1,10 @@
 # Knowledge Server: Claude Code Implementation Plan
 
-**Version:** 2.6  
-**Date:** February 1, 2026  
-**Spec Reference:** `spec-v0.11.md`  
-**Ontology Reference:** `ontology.md`
+**Version:** 2.7  
+**Date:** February 6, 2026  
+**Spec Reference:** `spec-v0.12.md`  
+**Ontology Reference:** `ontology.md`  
+**Access Control Reference:** `porch-spec.md` v0.14
 
 ## Overview
 
@@ -12,10 +13,11 @@ This plan outlines a systematic approach to implementing the SuperBenefit knowle
 **Repository:** `knowledge-server`
 
 **Deliverables:**
-- MCP server with SIWE authentication and Hats authorization
+- MCP server with porch access control framework (Open tier, Phase 1)
 - Public REST API with OpenAPI documentation
 - GitHub → R2 → Vectorize sync pipeline
 - Two-stage retrieval with ID-based document lookup
+- Framework ready for Phases 2-3 (no code changes required to add tiers)
 
 **Execution Model:**
 - **Parallel packages** (1-5) run in Claude Code Web as independent PRs
@@ -26,13 +28,13 @@ This plan outlines a systematic approach to implementing the SuperBenefit knowle
 
 ## Phased Architecture Summary
 
-| Phase | Focus | Deliverables | Architecture |
-|-------|-------|--------------|--------------|
-| **1. Foundation** | Search, retrieval, API | This plan | Stateless `createMcpHandler` |
-| **2. Stateful Services** | AI chat, agents, PRs | Future plan | `AIChatAgent` + AI SDK `tool()` |
-| **3. Knowledge Commons** | Multi-DAO federation | Future plan | `Agent` as MCP Client |
+| Phase | Focus | Deliverables | Architecture | Access |
+|-------|-------|--------------|--------------|--------|
+| **1. Foundation** | Search, retrieval, API | This plan | Stateless `createMcpHandler` | Open tier (no auth) |
+| **2. Stateful Services** | AI chat, agents, PRs | Future plan | `AIChatAgent` + AI SDK `tool()` | + Public tier (Access for SaaS) |
+| **3. Knowledge Commons** | Multi-DAO federation | Future plan | `Agent` as MCP Client | + Members tier (Hats/token gate) |
 
-**Phase 1 Scope:** Tools, Resources, Prompts
+**Phase 1 Scope:** Tools, Resources, Prompts — all Open tier, no authentication
 
 ---
 
@@ -66,7 +68,7 @@ Until the ontology is implemented:
 
 **Research Date:** 2026-02-01
 
-WaaP (Wallet as a Protocol) from human.tech/Holonym is validated for the authentication UI.
+WaaP (Wallet as a Protocol) from human.tech/Holonym is validated for the authentication UI in Phase 2+.
 
 ### What WaaP Is
 - **Frontend wallet SDK** (`@human.tech/waap-sdk`) — runs in browser only
@@ -74,46 +76,40 @@ WaaP (Wallet as a Protocol) from human.tech/Holonym is validated for the authent
 - Supports: wallet (injected), email, phone, social (Google, Twitter, Discord, GitHub)
 - 2PC (Two-Party Computation) key management with Ika MPC network
 - No seed phrases — recovery via social/biometric/2FA
-- Gas sponsorship ("Gas Tank") for gasless transactions
-- Independently audited by Cure53, Hexens, Least Authority, Halborn
 
 ### What WaaP Does NOT Do
 - Does NOT provide server-side authentication
 - Does NOT replace SIWE — it provides the wallet that signs SIWE messages
 - Has NO backend component for the knowledge-server
 
-### Architecture Decision
+### Phase 2 Architecture (Future)
+
 ```
 ┌─────────────────────────────────────────┐
 │ UI Client (Browser)                     │
 │ - WaaP SDK handles wallet UI            │
-│ - User logs in via email/social/        │
-│   wallet                                │
+│ - User logs in via email/social/wallet  │
 │ - Signs SIWE message                    │
 └──────────────┬──────────────────────────┘
-               │ POST { message, signature }
+               │ SIWE auth flow
+               ▼
+┌─────────────────────────────────────────┐
+│ SIWE OIDC IdP (separate Worker)         │
+│ - Validates SIWE signature              │
+│ - Issues OIDC tokens                    │
+│ - Registered in Cloudflare Access       │
+└──────────────┬──────────────────────────┘
+               │ Access JWT
                ▼
 ┌─────────────────────────────────────────┐
 │ Knowledge Server (Worker)               │
-│ - viem/siwe verifies signature          │
-│ - Checks Hats Protocol roles            │
-│ - Issues OAuth token                    │
+│ - Parses CF-Access-JWT-Assertion header │
+│ - Injects authContext into MCP handler  │
+│ - resolveAuthContext() → tier           │
 └─────────────────────────────────────────┘
 ```
 
-### Key Libraries
-| Component | Library | Runtime |
-|-----------|---------|---------|
-| Frontend wallet UI | `@human.tech/waap-sdk` | Browser |
-| SIWE message signing | `window.waap.request({ method: 'personal_sign' })` | Browser |
-| SIWE verification | `viem/siwe` | Edge (Worker) |
-| Role checking | `@hatsprotocol/sdk-v1-core` + viem | Edge (Worker) |
-
-### Why NOT WalletConnect
-- WalletConnect adds unnecessary complexity
-- WaaP handles wallet connections natively (injected wallets + MPC wallets)
-- No `WALLETCONNECT_PROJECT_ID` required
-- Simpler integration, fewer dependencies
+> **Phase 1 note:** WaaP is not needed for Phase 1. All tools are Open tier. The architecture above documents how auth will flow in Phase 2 via Cloudflare Access for SaaS. See `porch-spec.md` for full details.
 
 ---
 
@@ -123,49 +119,48 @@ WaaP (Wallet as a Protocol) from human.tech/Holonym is validated for the authent
 - [x] Dependencies installed (hono, viem, @hatsprotocol/sdk-v1-core, etc.)
 - [x] TypeScript compiles (`npm run type-check` passes)
 - [x] `src/env.d.ts` created for secret type definitions
-- [ ] Phase 0.5: GitHub OAuth App setup (HITL)
-- [ ] Package 0: Schemas (v0.11 ontology alignment)
+- [x] Porch spec v0.14 finalized — access control framework defined
+- [x] Validation report: all architectural assumptions confirmed against Feb 2026 docs
+- [x] Recovery plan: OAuth removal and porch realignment documented
+- [ ] ~~Phase 0.5: GitHub OAuth App setup~~ → **Removed** (porch framework eliminates in-Worker OAuth)
+- [ ] Package 0: Schemas (v0.12 ontology + porch types)
 - [ ] Packages 1-5: Implementation
-- [ ] Package 6: MCP Resources & Prompts
+- [ ] Package 6: Porch Framework + MCP Cleanup
 - [ ] Integration
 - [ ] **Knowledge base ontology implementation** (external dependency)
 
 ---
 
-## Phase 0.5: GitHub OAuth Setup (HITL - Human Required)
+## Recovery Context: OAuth Removal
 
-**⚠️ STOP: This step requires human action.**
+> **Background:** The codebase was scaffolded from `remote-mcp-github-oauth` template which includes `OAuthProvider`, GitHub OAuth handler, and related bindings. The porch framework (v0.14) moves authentication to infrastructure layer and eliminates in-Worker OAuth for Phase 1. See `knowledge-server-recovery.md` for detailed change inventory.
 
-Claude Code should pause here and display these instructions to the user:
+### What Gets Removed
 
-```
-═══════════════════════════════════════════════════════════════════
-HUMAN ACTION REQUIRED: Create GitHub OAuth App for Local Development
-═══════════════════════════════════════════════════════════════════
+| File/Binding | Lines | Reason |
+|-------------|-------|--------|
+| `src/github-handler.ts` | ~200 | OAuth flow → porch Phase 2 |
+| `src/workers-oauth-utils.ts` | ~400 | CSRF, state, dialogs → porch Phase 2 |
+| `src/utils.ts` | ~80 | Upstream auth helpers |
+| `OAUTH_KV` binding | — | Not needed (authContext injection) |
+| `NONCE_KV` binding | — | Not needed until Phase 3 |
+| `workers-oauth-provider` dep | — | No longer a runtime dependency |
+| `GITHUB_CLIENT_ID` secret | — | OAuth app not used |
+| `GITHUB_CLIENT_SECRET` secret | — | OAuth app not used |
+| `COOKIE_ENCRYPTION_KEY` secret | — | No session management |
 
-1. Go to: https://github.com/settings/developers
-2. Click "New OAuth App"
-3. Fill in:
-   - Application name: knowledge-server-dev
-   - Homepage URL: http://localhost:8788
-   - Authorization callback URL: http://localhost:8788/callback
-4. Click "Register application"
-5. Copy the Client ID
-6. Click "Generate a new client secret" and copy it
+Total: ~680 lines removed, 3 bindings removed, 3 secrets removed.
 
-7. Generate encryption key (run in terminal):
-   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+### What Stays (Dormant for Phase 3)
 
-8. Create .dev.vars file in project root with:
-   GITHUB_CLIENT_ID=<your_client_id>
-   GITHUB_CLIENT_SECRET=<your_client_secret>
-   COOKIE_ENCRYPTION_KEY=<your_random_hex>
-
-9. Verify with: npm run dev
-
-Reply "done" when complete.
-═══════════════════════════════════════════════════════════════════
-```
+| File | Purpose |
+|------|---------|
+| `src/auth/hats.ts` | Hats Protocol role checking |
+| `src/auth/ens.ts` | ENS resolution for display |
+| `ROLE_CACHE` KV | Cached Hats roles |
+| `ENS_CACHE` KV | Cached ENS lookups |
+| `MAINNET_RPC_URL` | ENS resolution |
+| `OPTIMISM_RPC_URL` | Hats queries |
 
 ---
 
@@ -182,7 +177,7 @@ This plan supports parallel development using Claude Code Web for isolated modul
 
 ### Work Packages
 
-Execute packages 1-5 in parallel after Package 0 is merged. Package 6 (MCP Resources & Prompts) follows integration.
+Execute packages 1-5 in parallel after Package 0 is merged. Package 6 (Porch Framework + MCP Cleanup) follows integration.
 
 ```
                     ┌─────────────────┐
@@ -196,9 +191,9 @@ Execute packages 1-5 in parallel after Package 0 is merged. Package 6 (MCP Resou
 ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
 │   Package 1     │ │   Package 2     │ │   Package 4     │
 │   Auth Module   │ │   Retrieval     │ │  Sync Workflow  │
-│    CC Web ✅    │ │    CC Web ✅    │ │    CC Web ✅    │
-└────────┬────────┘ └────────┬────────┘ └────────┬────────┘
-         │                   │                   │
+│  (porch types)  │ │    CC Web ✅    │ │    CC Web ✅    │
+│    CC Web ✅    │ └────────┬────────┘ └────────┬────────┘
+└────────┬────────┘          │                   │
          │          ┌────────┴────────┐          │
          │          ▼                 │          │
          │ ┌─────────────────┐        │          │
@@ -226,7 +221,8 @@ Execute packages 1-5 in parallel after Package 0 is merged. Package 6 (MCP Resou
                           ▼
               ┌───────────────────────┐
               │     Package 6         │
-              │ MCP Resources/Prompts │
+              │  Porch Framework +    │
+              │  MCP Cleanup          │
               │    CC Web or Local    │
               └───────────────────────┘
 ```
@@ -246,11 +242,11 @@ src/types/
 ├── index.ts       # Re-exports all types
 ├── content.ts     # Content schemas per ontology
 ├── storage.ts     # R2Document, VectorMetadata, ID helpers
-├── auth.ts        # AuthProps, AccessTier, HatsRoles
+├── auth.ts        # Porch framework types (AccessTier, AuthContext, etc.)
 └── api.ts         # API request/response types
 ```
 
-### content.ts — Content Model (v0.11)
+### content.ts — Content Model (v0.12)
 
 ```typescript
 import { z } from 'zod';
@@ -304,7 +300,7 @@ export function inferContentType(path: string): ContentType {
   return 'file';
 }
 
-// FileSchema — base for all types (v0.11 fields)
+// FileSchema — base for all types (v0.12 fields)
 export const FileSchema = z.object({
   type: ContentTypeSchema.optional(),
   title: z.string().min(1),
@@ -337,100 +333,126 @@ export const DataSchema = FileSchema;
 ```typescript
 import { ContentType } from './content';
 
-/**
- * R2Document stored in superbenefit-knowledge bucket.
- * Key format: content/{contentType}/{id}.json
- */
 export interface R2Document {
-  id: string;                    // Vector ID, R2 key stem
-  contentType: ContentType;      // Leaf type
-  path: string;                  // Original GitHub path
-  metadata: Record<string, any>; // Frontmatter fields
-  content: string;               // Markdown body
-  syncedAt: string;              // ISO timestamp
-  commitSha: string;             // Git commit reference
+  id: string;
+  contentType: ContentType;
+  path: string;
+  metadata: Record<string, any>;
+  content: string;
+  syncedAt: string;
+  commitSha: string;
 }
 
-/**
- * Vectorize metadata structure.
- * Total must be under 10 KiB per vector.
- */
 export interface VectorMetadata {
   // Indexed fields (used for filtering) — ~200 bytes
   contentType: string;
   group: string;
-  tags: string;                  // Comma-separated
+  tags: string;
   release: string;
   status: string;
-  date: number;                  // Unix timestamp ms
+  date: number;
   
   // Non-indexed fields (for retrieval/reranking) — ~8800 bytes
-  path: string;                  // R2 object key
+  path: string;
   title: string;
   description: string;
-  content: string;               // Truncated body for reranking
+  content: string;
 }
 
-// Vectorize limits
 export const VECTORIZE_LIMITS = {
-  METADATA_MAX_BYTES: 10 * 1024,         // 10 KiB
+  METADATA_MAX_BYTES: 10 * 1024,
   VECTOR_ID_MAX_BYTES: 64,
-  STRING_INDEX_MAX_BYTES: 64,            // First 64 bytes indexed
+  STRING_INDEX_MAX_BYTES: 64,
   TOP_K_WITH_METADATA: 20,
   TOP_K_WITHOUT_METADATA: 100,
   MAX_METADATA_INDEXES: 10,
 } as const;
 
-// Content truncation for metadata
-const MAX_CONTENT_LENGTH = 8000;  // ~8KB, leaves room for other fields
+const MAX_CONTENT_LENGTH = 8000;
 
 export function truncateForMetadata(content: string): string {
   if (content.length <= MAX_CONTENT_LENGTH) return content;
-  
-  // Truncate at word boundary
   const truncated = content.slice(0, MAX_CONTENT_LENGTH);
   const lastSpace = truncated.lastIndexOf(' ');
   return truncated.slice(0, lastSpace) + '...';
 }
 
-/**
- * Generate document ID from file path.
- * Example: "artifacts/patterns/cell-governance.md" → "cell-governance"
- */
 export function generateId(path: string): string {
   const filename = path.split('/').pop() || path;
   const id = filename.replace(/\.md$/, '');
-  
   if (new TextEncoder().encode(id).length > VECTORIZE_LIMITS.VECTOR_ID_MAX_BYTES) {
     throw new Error(`ID exceeds 64 byte limit: ${id}`);
   }
-  
   return id;
 }
 
-/**
- * Construct R2 object key from contentType and ID.
- */
 export function toR2Key(contentType: ContentType, id: string): string {
   return `content/${contentType}/${id}.json`;
 }
 
-/**
- * Extract ID from R2 object key.
- */
 export function extractIdFromKey(key: string): string {
   const parts = key.split('/');
   const filename = parts[parts.length - 1];
   return filename.replace(/\.json$/, '');
 }
 
-/**
- * Extract contentType from R2 object key.
- */
 export function extractContentTypeFromKey(key: string): ContentType {
   const parts = key.split('/');
   return parts[1] as ContentType;
 }
+```
+
+### auth.ts — Porch Framework Types (v0.12)
+
+```typescript
+/**
+ * Porch access control framework types.
+ * See porch-spec.md v0.14 for full specification.
+ *
+ * Phase 1: Only 'open' tier active
+ * Phase 2: + 'public' tier via Access for SaaS
+ * Phase 3: + 'members' tier via Hats/token gate
+ */
+
+export type AccessTier = 'open' | 'public' | 'members';
+
+export const TIER_LEVEL: Record<AccessTier, number> = {
+  open: 0,
+  public: 1,
+  members: 2,
+};
+
+export interface Identity {
+  userId: string;
+  name: string | null;
+  email: string | null;
+  provider: string;    // "github" | "siwe"
+}
+
+export interface AuthContext {
+  identity: Identity | null;
+  tier: AccessTier;
+  address: `0x${string}` | null;
+  roles: HatsRole | null;
+}
+
+export interface HatsRole {
+  hats: bigint[];
+  isMember: boolean;
+  isContributor: boolean;
+}
+
+// Hats Protocol configuration (dormant until Phase 3)
+export const HATS_CONFIG = {
+  chain: 'optimism' as const,
+  chainId: 10,
+  contract: '0x3bc1A0Ad72417f2d411118085256fC53CBdDd137' as const,
+  treeId: 30,
+  paths: {
+    contributor: [3, 1] as const,
+    member: [3, 5] as const,
+  },
+} as const;
 ```
 
 ### CC Web Kickoff Prompt
@@ -438,7 +460,7 @@ export function extractContentTypeFromKey(key: string): ContentType {
 ```
 I'm implementing Package 0 (Schemas) for the SuperBenefit knowledge-server.
 
-Reference: spec-v0.11.md Sections 3-4
+Reference: spec-v0.12.md Sections 2-4
 
 Create src/types/ with:
 
@@ -447,7 +469,7 @@ Create src/types/ with:
    - RESOURCE_TYPES, STORY_TYPES, REFERENCE_TYPES, DATA_TYPES arrays
    - PATH_TYPE_MAP for directory → type inference
    - inferContentType() helper
-   - FileSchema (base) with v0.11 fields
+   - FileSchema (base) with v0.12 fields
    - Parent schemas: ReferenceSchema, ResourceSchema, StorySchema, DataSchema
    - Concrete type schemas for all 16 leaf types
    - ContentSchema discriminated union
@@ -456,21 +478,18 @@ Create src/types/ with:
    - R2Document interface
    - VectorMetadata interface (indexed + non-indexed fields)
    - VECTORIZE_LIMITS constants
-   - truncateForMetadata(content): string — truncate to ~8KB at word boundary
-   - generateId(path): string — extract ID from path, validate 64 byte limit
-   - toR2Key(contentType, id): string — construct R2 object key
-   - extractIdFromKey(key): string — extract ID from R2 key
-   - extractContentTypeFromKey(key): ContentType
+   - truncateForMetadata, generateId, toR2Key, extractIdFromKey, extractContentTypeFromKey
 
 3. auth.ts:
-   - AccessTier: 'public' | 'member' | 'vibecoder'
-   - HatsRoles: { isContributor: boolean, isMember: boolean, tier: AccessTier }
-   - AuthProps: { address, tier, roles, ensName?, chainId }
+   - AccessTier: 'open' | 'public' | 'members' (porch framework)
+   - TIER_LEVEL constants
+   - Identity interface (userId, name, email, provider)
+   - AuthContext interface (identity, tier, address, roles)
+   - HatsRole interface (hats, isMember, isContributor)
+   - HATS_CONFIG constants
 
 4. api.ts:
-   - SearchFilters: { contentType?, group?, release?, status?, tags? }
-   - SearchResult: { id, contentType, title, description, score, rerankScore? }
-   - RerankResult: { id, score, rerankScore, metadata: VectorMetadata }
+   - SearchFilters, SearchResult, RerankResult
    - ListEntriesResponse, SearchResponse schemas
 
 5. index.ts: re-exports
@@ -486,24 +505,79 @@ The ontology document defines the full type hierarchy and fields.
 **Environment:** CC Web ✅  
 **Dependencies:** Package 0
 
+> **Scope change in v2.7**: OAuth files removed. This package now focuses on porch framework files + dormant auth utilities for Phase 3.
+
 ```
 src/auth/
-├── siwe.ts        # SIWE verification with viem/siwe
-├── hats.ts        # Hats Protocol role checking
-├── ens.ts         # ENS resolution
-├── nonce.ts       # Nonce management (KV)
-├── oauth.ts       # OAuthProvider config
+├── resolve.ts     # resolveAuthContext() — porch framework core
+├── check.ts       # checkTierAccess() — tier comparison
+├── hats.ts        # Hats Protocol role checking (dormant)
+├── ens.ts         # ENS resolution (dormant)
 └── index.ts       # Exports
 ```
 
-All functions accept `deps` as params for testability:
+### resolve.ts — Porch Framework Core
+
 ```typescript
-interface AuthDeps {
-  mainnetClient: PublicClient;
-  optimismClient: PublicClient;
-  nonceKV: KVNamespace;
-  roleCache: KVNamespace;
-  ensCache: KVNamespace;
+import { getMcpAuthContext } from 'agents/mcp';
+import type { AuthContext, Identity } from '../types/auth';
+
+/**
+ * Resolve access context from the current request.
+ *
+ * Phase 1: Always returns { tier: 'open', identity: null }
+ * Phase 2: Extracts identity from getMcpAuthContext() (populated by
+ *          Access JWT injection via createMcpHandler's authContext option),
+ *          returns 'public' after sybil/agreement checks
+ * Phase 3: Checks Hats/tokens/org membership, returns 'members' if authorized
+ *
+ * This function is the ONLY place tier resolution logic lives.
+ * Tools never resolve tiers themselves.
+ */
+export async function resolveAuthContext(env: Env): Promise<AuthContext> {
+  // --- Phase 2: Authentication ---
+  // const mcpAuth = getMcpAuthContext();
+  // if (!mcpAuth?.props?.sub) {
+  //   return { identity: null, tier: 'open', address: null, roles: null };
+  // }
+  //
+  // const identity: Identity = {
+  //   userId: mcpAuth.props.sub as string,
+  //   name: (mcpAuth.props.name as string) ?? null,
+  //   email: (mcpAuth.props.email as string) ?? null,
+  //   provider: (mcpAuth.props.provider as string) ?? 'unknown',
+  // };
+  //
+  // --- Phase 3: Authorization ---
+  // const address = await env.IDENTITY_MAP.get(identity.userId);
+  // if (address) {
+  //   const roles = await checkHatsRoles(address, env);
+  //   if (roles.isMember || roles.isContributor) {
+  //     return { identity, tier: 'members', address, roles };
+  //   }
+  // }
+  //
+  // return { identity, tier: 'public', address: null, roles: null };
+
+  // Phase 1: Open tier only — no authentication
+  return { identity: null, tier: 'open', address: null, roles: null };
+}
+```
+
+### check.ts — Tier Checking
+
+```typescript
+import type { AccessTier, AuthContext } from '../types/auth';
+import { TIER_LEVEL } from '../types/auth';
+
+export function checkTierAccess(
+  requiredTier: AccessTier,
+  authContext: AuthContext
+): { allowed: true; authContext: AuthContext } | { allowed: false; requiredTier: AccessTier; currentTier: AccessTier } {
+  if (TIER_LEVEL[authContext.tier] >= TIER_LEVEL[requiredTier]) {
+    return { allowed: true, authContext };
+  }
+  return { allowed: false, requiredTier, currentTier: authContext.tier };
 }
 ```
 
@@ -512,41 +586,35 @@ interface AuthDeps {
 ```
 I'm implementing Package 1 (Auth Module) for the SuperBenefit knowledge-server.
 
-Reference: spec-v0.11.md Section 2 (Authentication & Authorization)
+Reference: spec-v0.12.md Section 2, porch-spec.md v0.14
 
-IMPORTANT: WaaP (@human.tech/waap-sdk) is a FRONTEND SDK that runs in the browser.
-The knowledge-server Worker only handles SIWE VERIFICATION using viem/siwe.
+This implements the porch access control framework for Phase 1 (Open tier only).
+There is NO OAuth, NO SIWE verification, NO token management in Phase 1.
 
 Create src/auth/ with:
 
-1. siwe.ts:
-   - createNonce(deps): Promise<string>
-   - validateNonce(nonce, deps): Promise<boolean>
-   - verifySIWE(message, signature, deps): Promise<{ address, chainId }>
-   - CRITICAL: Use viem/siwe (parseSiweMessage, verifySiweMessage)
-   - NOT the standalone siwe package (Buffer issues in edge runtime)
+1. resolve.ts:
+   - resolveAuthContext(env): Promise<AuthContext>
+   - Phase 1: always returns { tier: 'open', identity: null, address: null, roles: null }
+   - Contains commented Phase 2/3 logic as documented architecture
+   - Import getMcpAuthContext from 'agents/mcp' (commented until Phase 2)
 
-2. hats.ts:
-   - HATS_CONTRACT, TREE_ID, HAT_PATHS constants
-   - checkHatsRoles(address, deps): Promise<HatsRoles>
+2. check.ts:
+   - checkTierAccess(requiredTier, authContext): result
+   - Returns { allowed: true, authContext } or { allowed: false, requiredTier, currentTier }
+
+3. hats.ts (dormant — kept for Phase 3):
+   - checkHatsRoles(address, deps): Promise<HatsRole>
    - Use @hatsprotocol/sdk-v1-core for treeIdToHatId
+   - Cache results in ROLE_CACHE KV (5 min TTL)
 
-3. ens.ts:
+4. ens.ts (dormant — kept for Phase 3):
    - resolveENS(address, deps): Promise<{ name?, avatar? }>
-   - Cache results in ENS_CACHE (1 hour TTL)
+   - Cache results in ENS_CACHE KV (1 hour TTL)
 
-4. nonce.ts:
-   - Nonce KV helpers with 5 min TTL
+5. index.ts: exports resolveAuthContext, checkTierAccess, and dormant utilities
 
-5. oauth.ts:
-   - OAuthProvider configuration
-   - tokenExchangeCallback for role refresh
-   - authPageHandler: serves static HTML that loads WaaP SDK from CDN
-
-6. index.ts: exports
-
-Functions accept deps as params for testability.
-Import types from src/types/.
+Import types from src/types/auth.ts.
 ```
 
 ---
@@ -597,7 +665,7 @@ src/retrieval/
 ```
 I'm implementing Package 2 (Retrieval Module) for the SuperBenefit knowledge-server.
 
-Reference: spec-v0.11.md Section 6 (Retrieval System)
+Reference: spec-v0.12.md Section 6 (Retrieval System)
 
 This implements the ID-based retrieval pattern:
 - Vector ID = Document ID (e.g., "cell-governance")
@@ -625,19 +693,13 @@ Create src/retrieval/ with:
 
 4. fetch.ts:
    - getDocuments(results, deps): Promise<R2Document[]>
-   - Fetch from R2 using metadata.path
-   - Use R2ObjectBody.json<R2Document>() for parsing
-   - Only called for final top-5 after reranking
    - getDocument(contentType, id, deps): Promise<R2Document | null>
-   - Use toR2Key() from src/types/storage.ts
 
 5. cache.ts:
    - hashQuery(query, ids): string
 
 6. index.ts:
    - searchKnowledge(query, filters, options, deps): Promise<SearchResult[]>
-   - Three-stage flow: embed → filter → rerank → fetch
-   - options.includeDocuments controls whether to fetch full R2 docs
 
 Functions accept deps as params for testability.
 Import types from src/types/.
@@ -666,7 +728,7 @@ src/api/
 ```
 I'm implementing Package 3 (REST API) for the SuperBenefit knowledge-server.
 
-Reference: spec-v0.11.md Section 8 (Public REST API)
+Reference: spec-v0.12.md Section 8 (Public REST API)
 
 Create src/api/ with:
 
@@ -674,25 +736,18 @@ Create src/api/ with:
    - ListEntriesQuerySchema, SearchQuerySchema
    - ListEntriesResponseSchema, SearchResponseSchema
    - R2DocumentSchema (for single entry response)
-   - Use ContentTypeSchema from src/types/content.ts
 
 2. routes.ts:
    - OpenAPIHono app with CORS (origin: '*', methods: GET/HEAD/OPTIONS)
    - GET /entries — list/filter entries
-   - GET /entries/{contentType}/{id} — single entry (two path params)
+   - GET /entries/{contentType}/{id} — single entry
    - GET /search — semantic search
    - GET /openapi.json — OpenAPI spec
    - Cache headers: max-age=300, stale-while-revalidate=3600
 
-3. handlers/entries.ts:
-   - listEntries handler
-   - getEntry handler — uses getDocument(contentType, id, deps)
+3. handlers/entries.ts, handlers/search.ts
 
-4. handlers/search.ts:
-   - search handler — uses searchKnowledge()
-
-5. index.ts:
-   - Export configured api router
+4. index.ts: Export configured api router
 
 Use @hono/zod-openapi for route definitions.
 Import types from src/types/.
@@ -719,7 +774,7 @@ src/sync/
 ```
 I'm implementing Package 4 (Sync Workflow) for the SuperBenefit knowledge-server.
 
-Reference: spec-v0.11.md Section 5 (Sync Layer)
+Reference: spec-v0.12.md Section 5 (Sync Layer)
 
 Create src/sync/ with:
 
@@ -730,23 +785,18 @@ Create src/sync/ with:
    - CRITICAL: Only sync publish:true AND draft:false content
    - Use NonRetryableError for 404s
    - Retry config: limit 5, delay 30s, exponential backoff
-   - Store R2Document at toR2Key(contentType, id)
 
 2. parser.ts:
    - parseMarkdown(content: string): { frontmatter, body }
-   - Use yaml package for frontmatter parsing
-   - Validate frontmatter against FileSchema
 
 3. transform.ts:
-   - Uses generateId() and toR2Key() from src/types/storage.ts
    - normalizeContent(parsed, path): R2Document
 
 4. github.ts:
    - verifyWebhookSignature(body, signature, secret): boolean
    - fetchFileContent(path, commitSha, token): Promise<string>
 
-Import inferContentType from src/types/content.ts.
-Import generateId, toR2Key, R2Document from src/types/storage.ts.
+Import types from src/types/.
 ```
 
 ---
@@ -769,266 +819,180 @@ src/consumers/
 ```
 I'm implementing Package 5 (Queue Consumer) for the SuperBenefit knowledge-server.
 
-Reference: spec-v0.11.md Sections 4.3-4.4 and 5.3
-
-This implements the ID-based storage pattern:
-- Vector ID = doc.id (same as R2 key stem)
-- metadata.path = R2 object key for later fetching
-- metadata.content = truncated body for reranking (within 10 KiB limit)
+Reference: spec-v0.12.md Sections 4-5
 
 Create src/consumers/ with:
 
 1. vectorize.ts:
    - updateVectorize(doc: R2Document, deps): Promise<void>
-   - Generate embedding with @cf/baai/bge-base-en-v1.5
-   - Build VectorMetadata with indexed + non-indexed fields
-   - CRITICAL: Use truncateForMetadata() for content field
-   - CRITICAL: metadata.path = toR2Key(contentType, id) for later retrieval
-   - Upsert to Vectorize with id = doc.id
    - deleteFromVectorize(id, deps): Promise<void>
-   - Use extractIdFromKey() from src/types/storage.ts
+   - CRITICAL: Use truncateForMetadata() for content field
+   - CRITICAL: metadata.path = toR2Key(contentType, id)
 
 2. cache.ts:
    - invalidateCache(doc: R2Document, cache: KVNamespace): Promise<void>
-   - Clear relevant rerank cache entries
 
 3. handler.ts:
-   - Queue handler for R2 event notifications
    - CRITICAL: Use per-message msg.ack(), NOT batch.ackAll()
    - Only process content/ prefix objects
    - Handle object-create and object-delete events
-   - For object-create: fetch R2Document, call updateVectorize
-   - For object-delete: extract ID, call deleteFromVectorize
 
-Import types and helpers from src/types/storage.ts.
+Import types from src/types/.
 ```
 
 ---
 
-## Package 6: MCP Resources & Prompts
+## Package 6: Porch Framework + MCP Cleanup
 
-**Branch:** `feat/mcp-extras`  
+**Branch:** `feat/porch-framework`  
 **Environment:** CC Web or CC Local  
 **Dependencies:** Integration complete
 
-This package adds MCP Resources and Prompts to complete the client experience.
+> **Scope change in v2.7**: Previously "MCP Resources & Prompts". Now includes OAuth removal, porch framework wiring, and routing split. Resources and prompts code (from v2.6) is preserved.
 
-### MCP Primitives Overview
-
-| Primitive | Controlled By | Purpose |
-|-----------|---------------|---------|
-| **Tools** | AI model | Callable functions AI autonomously invokes |
-| **Resources** | Application | Read-only data clients inject as context |
-| **Prompts** | User | Workflow templates users explicitly invoke |
-
-### Files to Create
+### Files to Create/Update
 
 ```
 src/mcp/
-├── server.ts      # McpServer setup + createMcpHandler
-├── tools.ts       # Tool registrations
-├── resources.ts   # Resource registrations (NEW)
-├── prompts.ts     # Prompt registrations (NEW)
-└── index.ts       # Exports
+├── server.ts      # McpServer setup + createMcpHandler (update)
+├── tools.ts       # Tool registrations with porch tier checking (update)
+├── resources.ts   # Resource registrations (keep from v2.6)
+├── prompts.ts     # Prompt registrations (keep from v2.6)
+└── index.ts       # Exports (update)
+
+src/auth/
+├── resolve.ts     # resolveAuthContext() (from Package 1)
+├── check.ts       # checkTierAccess() (from Package 1)
+└── ...            # existing auth files
+
+src/
+├── index.ts       # Routing split: MCP direct, REST through Hono (update)
+└── env.d.ts       # Remove OAuth bindings (update)
 ```
 
-### resources.ts
+### Files to Delete
+
+```
+src/github-handler.ts         # OAuth flow
+src/workers-oauth-utils.ts    # CSRF, state, approval
+src/utils.ts                  # Upstream auth helpers
+```
+
+### MCP Server (Updated)
 
 ```typescript
+// src/mcp/server.ts
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { createMcpHandler } from "agents/mcp";
 
-export function registerResources(server: McpServer, env: Env) {
-  // System prompt for knowledge search
-  server.resource(
-    "prompts/knowledge-search",
-    "mcp://superbenefit/prompts/knowledge-search",
-    {
-      description: "System prompt optimized for SuperBenefit knowledge base search",
-      mimeType: "text/plain"
-    },
-    async () => ({
-      contents: [{
-        uri: "mcp://superbenefit/prompts/knowledge-search",
-        mimeType: "text/plain",
-        text: KNOWLEDGE_SEARCH_SYSTEM_PROMPT
-      }]
-    })
-  );
+export function createKnowledgeServer(env: Env) {
+  const server = new McpServer({
+    name: "superbenefit-knowledge",
+    version: "1.0.0",
+  });
 
-  // Ontology documentation
-  server.resource(
-    "data/ontology",
-    "mcp://superbenefit/data/ontology",
-    {
-      description: "Content type hierarchy and metadata schema documentation",
-      mimeType: "application/json"
-    },
-    async () => ({
-      contents: [{
-        uri: "mcp://superbenefit/data/ontology",
-        mimeType: "application/json",
-        text: JSON.stringify(ONTOLOGY_SCHEMA, null, 2)
-      }]
-    })
-  );
+  registerTools(server, env);
+  registerResources(server, env);
+  registerPrompts(server, env);
 
-  // Groups list
-  server.resource(
-    "data/groups",
-    "mcp://superbenefit/data/groups",
-    {
-      description: "List of SuperBenefit groups/cells with metadata",
-      mimeType: "application/json"
-    },
-    async () => {
-      const groups = await listGroups(env);
-      return {
-        contents: [{
-          uri: "mcp://superbenefit/data/groups",
-          mimeType: "application/json",
-          text: JSON.stringify(groups, null, 2)
-        }]
-      };
+  return server;
+}
+
+export const McpHandler = {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const server = createKnowledgeServer(env);
+    const handler = createMcpHandler(server, {
+      route: '/mcp',
+      corsOptions: { origin: '*' },
+      // Phase 2: authContext injected here from Access JWT
+    });
+    return handler(request, env, ctx);
+  },
+};
+```
+
+### Tool Pattern (Porch Framework)
+
+```typescript
+// src/mcp/tools.ts — every tool uses this pattern
+import { resolveAuthContext } from '../auth/resolve';
+import { checkTierAccess } from '../auth/check';
+
+server.tool('search_knowledge', 'Search the knowledge base', { query: z.string(), ... },
+  async ({ query, filters }) => {
+    const authContext = await resolveAuthContext(env);
+    const access = checkTierAccess('open', authContext);
+    if (!access.allowed) {
+      return { content: [{ type: 'text', text: `Requires ${access.requiredTier} access.` }], isError: true };
     }
-  );
-}
+    const results = await searchKnowledge(query, filters || {}, {}, env);
+    return { content: [{ type: 'text', text: JSON.stringify(results, null, 2) }] };
+  }
+);
 ```
 
-### prompts.ts
+### Router Integration (Option B: Routing Split)
 
 ```typescript
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+// src/index.ts
+import { Hono } from 'hono';
+import { api } from './api/routes';
+import { McpHandler } from './mcp';
+import { handleVectorizeQueue } from './consumers/vectorize';
 
-export function registerPrompts(server: McpServer, env: Env) {
-  // Research workflow
-  server.prompt(
-    "research-topic",
-    "Research a topic comprehensively across the SuperBenefit knowledge base",
-    [
-      { name: "topic", description: "Topic to research", required: true },
-      { name: "depth", description: "Research depth: shallow or deep", required: false },
-    ],
-    async ({ topic, depth = "shallow" }) => ({
-      messages: [{
-        role: "user",
-        content: {
-          type: "text",
-          text: `Research the topic "${topic}" in the SuperBenefit knowledge base.
+export { KnowledgeSyncWorkflow } from './sync/workflow';
 
-${depth === "deep" ? `
-Provide a comprehensive analysis including:
-1. Core concepts and definitions from the lexicon
-2. Related patterns and practices from artifacts
-3. External resources from the library
-4. Cross-references to other relevant topics
-5. Gaps or areas needing more documentation
-` : `
-Provide a brief summary including:
-1. Key definition from the lexicon
-2. Most relevant artifact
-3. One or two external resources
-`}
+const app = new Hono<{ Bindings: Env }>();
 
-Use the search_knowledge and define_term tools as needed.`
-        }
-      }]
-    })
-  );
+// Public REST API
+app.route('/api/v1', api);
 
-  // Explain a DAO pattern
-  server.prompt(
-    "explain-pattern",
-    "Explain a DAO pattern with examples and context",
-    [
-      { name: "pattern", description: "Pattern name to explain", required: true },
-    ],
-    async ({ pattern }) => ({
-      messages: [{
-        role: "user",
-        content: {
-          type: "text",
-          text: `Explain the DAO pattern "${pattern}" as documented in SuperBenefit's knowledge base.
-
-Include:
-1. Definition from the lexicon
-2. How it works in practice
-3. Examples from SuperBenefit's experience
-4. Related patterns
-5. When to use vs. alternatives
-
-Use the search_knowledge and define_term tools to find accurate information.`
-        }
-      }]
-    })
-  );
-
-  // Compare governance approaches
-  server.prompt(
-    "compare-practices",
-    "Compare two governance or coordination practices",
-    [
-      { name: "practice1", description: "First practice to compare", required: true },
-      { name: "practice2", description: "Second practice to compare", required: true },
-    ],
-    async ({ practice1, practice2 }) => ({
-      messages: [{
-        role: "user",
-        content: {
-          type: "text",
-          text: `Compare "${practice1}" and "${practice2}" as governance/coordination approaches.
-
-Structure your comparison:
-1. Brief definition of each
-2. Key similarities
-3. Key differences
-4. When to use each
-5. How they might complement each other
-
-Use the search_knowledge tool to find relevant documentation for both.`
-        }
-      }]
-    })
-  );
-}
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    const url = new URL(request.url);
+    
+    // MCP server — direct to handler, bypassing Hono
+    if (url.pathname === '/mcp' || url.pathname.startsWith('/mcp/')) {
+      return McpHandler.fetch(request, env, ctx);
+    }
+    
+    // GitHub webhook
+    if (url.pathname === '/webhook' && request.method === 'POST') {
+      return handleWebhook(request, env);
+    }
+    
+    // Everything else through Hono (REST API, health checks)
+    return app.fetch(request, env, ctx);
+  },
+  queue: handleVectorizeQueue,
+};
 ```
 
 ### CC Web Kickoff Prompt
 
 ```
-I'm implementing Package 6 (MCP Resources & Prompts) for the SuperBenefit knowledge-server.
+I'm implementing Package 6 (Porch Framework + MCP Cleanup) for the SuperBenefit knowledge-server.
 
-Reference: spec-v0.11.md Sections 7.4-7.5
+Reference: spec-v0.12.md Sections 2 and 7, porch-spec.md v0.14, knowledge-server-recovery.md
 
-MCP Primitives:
-- Tools: AI-controlled functions (already implemented)
-- Resources: App-controlled read-only data (this package)
-- Prompts: User-controlled workflow templates (this package)
+This package:
+1. Removes OAuth files (github-handler.ts, workers-oauth-utils.ts, utils.ts)
+2. Updates tools to use resolveAuthContext() + checkTierAccess() pattern
+3. Updates server.ts to remove OAuthProvider wrapping
+4. Updates index.ts to routing split (MCP direct, REST through Hono)
+5. Updates env.d.ts to remove OAuth bindings
+6. Updates wrangler.jsonc to remove OAUTH_KV, NONCE_KV
+7. Preserves resources.ts and prompts.ts (already implemented)
 
-Create/update src/mcp/ with:
+Key changes:
+- OLD: OAuthProvider wraps McpHandler, Hono routes /mcp/*, /authorize, /token
+- NEW: MCP requests go direct to handler, REST through Hono, no OAuthProvider
+- OLD: requireTier() wrapper reads context.props
+- NEW: resolveAuthContext() + checkTierAccess() per porch-spec.md
+- OLD: AccessTier = 'public' | 'member' | 'vibecoder'
+- NEW: AccessTier = 'open' | 'public' | 'members'
 
-1. resources.ts:
-   - registerResources(server: McpServer, env: Env): void
-   - prompts/knowledge-search: System prompt for knowledge search
-   - data/ontology: Content type hierarchy JSON
-   - data/groups: List of groups/cells
-   - data/releases: List of creative releases
-   - Use server.resource() API with URI format mcp://superbenefit/...
-
-2. prompts.ts:
-   - registerPrompts(server: McpServer, env: Env): void
-   - research-topic: Multi-step research workflow (topic, depth args)
-   - explain-pattern: Explain a DAO pattern with examples (pattern arg)
-   - compare-practices: Compare two approaches (practice1, practice2 args)
-   - Use server.prompt() API with argument definitions
-
-3. Update server.ts to call registerResources and registerPrompts
-
-Client support:
-- Claude Desktop: Full support
-- Claude Code: Full support
-- Cursor/Windsurf: Limited (focus on tools)
-
-Import types from src/types/.
+All tools require 'open' tier for Phase 1.
 ```
 
 ---
@@ -1040,120 +1004,24 @@ Import types from src/types/.
 **Dependencies:** All packages merged
 
 Tasks:
-- Wire `src/index.ts` router (mount api + oauth routes)
-- Implement `src/mcp/server.ts` with createMcpHandler pattern
-- Implement `src/mcp/tools.ts` with permission wrapper
+- Wire `src/index.ts` router (routing split: MCP direct, REST through Hono)
+- Implement `src/mcp/server.ts` with createMcpHandler (no OAuthProvider)
+- Implement `src/mcp/tools.ts` with porch tier checking
 - Update `wrangler.jsonc` with actual binding IDs
-- Test with `wrangler dev` + MCP Inspector
+- Test with `wrangler dev` + MCP Inspector (no auth needed!)
 - Test REST API with curl
 - Deploy
 
-### MCP Server Implementation (v0.11 Pattern)
+### Routing Split Pattern
 
-```typescript
-// src/mcp/server.ts
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { createMcpHandler } from "agents/mcp";
-import { registerTools } from "./tools";
-import { registerResources } from "./resources";
-import { registerPrompts } from "./prompts";
-
-export function createKnowledgeServer(env: Env) {
-  const server = new McpServer({
-    name: "superbenefit-knowledge",
-    version: "1.0.0",
-  });
-
-  // Register all primitives
-  registerTools(server, env);
-  registerResources(server, env);
-  registerPrompts(server, env);
-
-  return server;
-}
-
-// Handler for OAuthProvider integration
-export const McpHandler = {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    const server = createKnowledgeServer(env);
-    return createMcpHandler(server, {
-      corsOptions: { origins: ["*"] }
-    })(request, env, ctx);
-  }
-};
+```
+Request → fetch handler
+  ├── /mcp, /mcp/*   → McpHandler.fetch() (direct, bypasses Hono)
+  ├── /webhook POST   → handleWebhook() (GitHub sync)
+  └── everything else → Hono app (REST API, health checks)
 ```
 
-### Permission Wrapper Pattern
-
-```typescript
-// src/mcp/tools.ts
-type AccessTier = 'public' | 'member' | 'vibecoder';
-type ToolHandler = (params: any, context: any) => Promise<{ content: any[] }>;
-
-function requireTier(requiredTier: AccessTier, handler: ToolHandler): ToolHandler {
-  const tierLevel = { public: 0, member: 1, vibecoder: 2 };
-  
-  return async (params, context) => {
-    const userTier = context.props?.tier || 'public';
-    
-    if (tierLevel[userTier] < tierLevel[requiredTier]) {
-      return {
-        content: [{
-          type: "text",
-          text: `Access denied. This tool requires ${requiredTier} access.`
-        }],
-        isError: true
-      };
-    }
-    
-    return handler(params, context);
-  };
-}
-
-// Usage:
-server.tool(
-  "get_document",
-  "Get full document content by ID",
-  { contentType: ContentTypeSchema, id: z.string() },
-  requireTier('member', async ({ contentType, id }, context) => {
-    const doc = await getDocument(contentType, id, env);
-    return { content: [{ type: "text", text: JSON.stringify(doc) }] };
-  })
-);
-```
-
-### Router Integration
-
-```typescript
-// src/index.ts
-import { Hono } from 'hono';
-import { api } from './api';
-import { OAuthProvider } from "workers-oauth-provider";
-import { McpHandler } from "./mcp/server";
-import { SIWEHandler } from "./auth/oauth";
-
-const app = new Hono<{ Bindings: Env }>();
-
-// Public REST API (no auth, CORS enabled)
-app.route('/api/v1', api);
-
-// MCP + OAuth routes handled by OAuthProvider
-const oauthProvider = new OAuthProvider({
-  apiRoute: "/mcp",
-  apiHandler: McpHandler,
-  defaultHandler: SIWEHandler,
-  refreshTokenTTL: 2592000,
-  // ... config
-});
-
-app.all('/mcp/*', (c) => oauthProvider.fetch(c.req.raw, c.env, c.executionCtx));
-app.all('/authorize', (c) => oauthProvider.fetch(c.req.raw, c.env, c.executionCtx));
-app.all('/token', (c) => oauthProvider.fetch(c.req.raw, c.env, c.executionCtx));
-app.all('/siwe/*', (c) => oauthProvider.fetch(c.req.raw, c.env, c.executionCtx));
-app.all('/register', (c) => oauthProvider.fetch(c.req.raw, c.env, c.executionCtx));
-
-export default app;
-```
+**Why routing split?** MCP's Streamable HTTP protocol has specific requirements around session management and streaming that can conflict with Hono middleware (CORS, body parsing, etc.). Routing MCP requests directly to `createMcpHandler` avoids these issues while REST routes benefit from Hono's middleware stack.
 
 ---
 
@@ -1186,13 +1054,13 @@ npx wrangler vectorize create-metadata-index superbenefit-knowledge-idx \
 # Create Queue
 npx wrangler queues create superbenefit-knowledge-sync
 
-# Create KV namespaces
-npx wrangler kv:namespace create OAUTH_KV
-npx wrangler kv:namespace create NONCE_KV
-npx wrangler kv:namespace create ROLE_CACHE
-npx wrangler kv:namespace create ENS_CACHE
+# Create KV namespaces (active)
 npx wrangler kv:namespace create RERANK_CACHE
 npx wrangler kv:namespace create SYNC_STATE
+
+# Create KV namespaces (dormant — Phase 3)
+npx wrangler kv:namespace create ROLE_CACHE
+npx wrangler kv:namespace create ENS_CACHE
 
 # Configure R2 event notifications
 npx wrangler r2 bucket notification create superbenefit-knowledge \
@@ -1201,6 +1069,8 @@ npx wrangler r2 bucket notification create superbenefit-knowledge \
   --prefix content/
 ```
 
+> **Removed in v2.7**: `OAUTH_KV` and `NONCE_KV` creation commands. See recovery plan for dashboard cleanup of existing namespaces.
+
 ---
 
 ## Testing Strategy
@@ -1208,13 +1078,15 @@ npx wrangler r2 bucket notification create superbenefit-knowledge \
 ### Local Testing
 
 ```bash
-# Terminal 1: Start server
+# Terminal 1: Start server (no auth config needed!)
 npm run dev
 
 # Terminal 2: MCP Inspector
 npx @modelcontextprotocol/inspector
 # Connect to http://localhost:8788/mcp
 ```
+
+> **Simplified in v2.7**: No `.dev.vars` needed for OAuth credentials. No GitHub OAuth App setup. `wrangler dev` works immediately for MCP and REST endpoints.
 
 ### REST API Testing
 
@@ -1256,52 +1128,65 @@ fetch('http://localhost:8788/api/v1/entries')
 ## Deployment Checklist
 
 1. [ ] All packages merged to main
-2. [ ] `wrangler.jsonc` has actual binding IDs
-3. [ ] Secrets configured via `wrangler secret put`
-4. [ ] Vectorize metadata indexes created
-5. [ ] R2 event notifications configured
-6. [ ] GitHub webhook pointing to deployed URL
-7. [ ] Deploy: `npm run deploy`
-8. [ ] Verify: MCP Inspector connects
-9. [ ] Verify: REST API responds
-10. [ ] Trigger sync: push to knowledge-base
+2. [ ] OAuth files deleted (github-handler.ts, workers-oauth-utils.ts, utils.ts)
+3. [ ] `wrangler.jsonc` has actual binding IDs (no OAUTH_KV, no NONCE_KV)
+4. [ ] Active secrets configured: `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET`
+5. [ ] Removed secrets: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `COOKIE_ENCRYPTION_KEY`
+6. [ ] Vectorize metadata indexes created
+7. [ ] R2 event notifications configured
+8. [ ] GitHub webhook pointing to deployed URL
+9. [ ] Deploy: `npm run deploy`
+10. [ ] Verify: MCP Inspector connects (no auth)
+11. [ ] Verify: REST API responds
+12. [ ] Verify: `resolveAuthContext()` returns `{ tier: 'open' }`
+13. [ ] Trigger sync: push to knowledge-base
+14. [ ] Dashboard cleanup: delete unused KV namespaces (see recovery plan)
 
 ---
 
 ## Future Phases Reference
 
-### Phase 2: Stateful Services
+### Phase 2: Stateful Services + Public Tier
 
 **When to implement:** After Phase 1 is stable and you need:
 - AI chat interfaces with persistent history
 - Human-in-the-loop approval for write operations
-- Multi-step tool chains
-- Automated PR creation
+- Authenticated user features (personalized, rate-limited)
 
 **Architecture:** `AIChatAgent` + AI SDK `tool()` with `needsApproval`
+
+**Porch additions:**
+- Register knowledge server in Cloudflare Access for SaaS
+- Configure GitHub + SIWE as IdPs in Access
+- Add middleware to parse `CF-Access-JWT-Assertion` → inject `authContext`
+- Uncomment Phase 2 block in `resolveAuthContext()`
+- Optionally register in MCP Server Portal
 
 **Key additions:**
 - Durable Object binding for agent state
 - React client with `useAgentChat()` hook
 - GitHub API integration for PRs
+- `CF_ACCESS_AUD` binding
+- `SYBIL_CACHE`, `AGREEMENTS` KV namespaces
 
-### Phase 3: Knowledge Commons
+### Phase 3: Knowledge Commons + Members Tier
 
 **When to implement:** After Phase 2 and you want:
 - Cross-DAO knowledge federation
 - Partner MCP server connections
-- Aggregated search across ecosystems
+- Member-only tools (governance, write operations)
 
 **Architecture:** `Agent` as MCP Client with `addMcpServer()`
 
-**Key additions:**
-- Partner MCP server agreements
-- OAuth handling for external servers
-- Aggregation UI
+**Porch additions:**
+- Uncomment Phase 3 block in `resolveAuthContext()`
+- `IDENTITY_MAP` KV for GitHub→wallet mapping
+- `HATS_SUBGRAPH_URL` for subgraph queries
+- Activate dormant `hats.ts`, `ens.ts`, `ROLE_CACHE`, `ENS_CACHE`
 
 ---
 
-## Dependencies (v0.11)
+## Dependencies (v0.12)
 
 ```json
 {
@@ -1312,17 +1197,18 @@ fetch('http://localhost:8788/api/v1/entries')
     "agents": "^0.3.0",
     "hono": "^4.0.0",
     "viem": "^2.21.0",
-    "workers-oauth-provider": "^0.2.0",
     "yaml": "^2.3.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20240620.0",
+    "@cloudflare/workers-types": "^4.20250101.0",
     "typescript": "^5.5.0",
     "wrangler": "^3.60.0"
   }
 }
 ```
+
+> **Removed in v2.7**: `workers-oauth-provider` — no longer a Worker dependency. Phase 2 auth handled by Cloudflare Access for SaaS at the infrastructure layer.
 
 ---
 
@@ -1330,6 +1216,7 @@ fetch('http://localhost:8788/api/v1/entries')
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 2.7 | 2026-02-06 | Porch framework: replaced OAuthProvider with authContext injection, new tier model (open/public/members), routing split (MCP direct, REST through Hono), removed Phase 0.5 OAuth setup, removed OAUTH_KV/NONCE_KV, removed workers-oauth-provider, updated Package 1 (auth → porch framework), updated Package 6 (porch cleanup), added recovery context, simplified testing (no auth config needed) |
 | 2.6 | 2026-02-01 | MCP patterns: stateless createMcpHandler, permission wrapper, Package 6 (Resources/Prompts), phased architecture summary, future phases reference, updated dependencies |
 | 2.5 | 2026-02-01 | ID-based retrieval: storage.ts types, fetch.ts module, updated vectorize consumer |
 | 2.4 | 2026-02-01 | Ontology alignment: Package 0 content model, v0.9 schema updates |
