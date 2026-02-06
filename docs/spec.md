@@ -1,8 +1,7 @@
 # SuperBenefit AI Tools Infrastructure Specification
 
-**Version:** 0.12  
-**Date:** February 6, 2026  
-**Access Control Reference:** `porch-spec.md` v0.14
+**Version:** 0.13  
+**Date:** February 6, 2026
 
 ---
 
@@ -29,7 +28,7 @@ The knowledge server schemas depend on this structure being in place. See ontolo
 
 1. **Cloudflare-native** — No containers, Kubernetes, or external orchestration
 2. **Single connection point** — Members configure one URL, get all tools
-3. **Porch access control** — Three-tier framework: Open → Public → Members (see `porch-spec.md`)
+3. **Porch access control** — Three-tier framework: Open → Public → Members
 4. **R2 as canonical store** — GitHub syncs to R2; consumers read from R2
 5. **Event-driven updates** — R2 notifications trigger consumer updates
 6. **Two-stage retrieval** — Metadata filtering + reranking for quality
@@ -134,9 +133,7 @@ The knowledge server schemas depend on this structure being in place. See ontolo
 
 ## 2. Access Control
 
-> **Full specification**: See `porch-spec.md` v0.14 for the complete access control framework including tier definitions, identity model, authorization resolution, and phased implementation.
-
-This section summarizes the access control integration points in the knowledge server.
+This section defines the access control framework for the knowledge server.
 
 ### 2.1 Tier Model
 
@@ -149,7 +146,7 @@ This section summarizes the access control integration points in the knowledge s
 ### 2.2 Framework Interface
 
 ```typescript
-// src/auth/types.ts
+// src/types/auth.ts
 
 export type AccessTier = 'open' | 'public' | 'members';
 
@@ -163,68 +160,28 @@ export interface Identity {
   userId: string;
   name: string | null;
   email: string | null;
-  provider: string;    // "github" | "siwe"
+  provider: string; // "github" | "siwe"
 }
 
 export interface AuthContext {
   identity: Identity | null;
   tier: AccessTier;
-  address: `0x${string}` | null;
-  roles: HatsRole | null;
-}
-
-export interface HatsRole {
-  hats: bigint[];
-  isMember: boolean;
-  isContributor: boolean;
 }
 ```
+
+> **Phase 1**: `identity` is always `null`. Phase 2 populates it from Access JWT claims. Phase 3 extends with Hats Protocol role checking (new types added at that time).
 
 ### 2.3 Auth Context Resolution
 
 ```typescript
 // src/auth/resolve.ts
-import { getMcpAuthContext } from 'agents/mcp';
 
 /**
  * Resolve access context from the current request.
- *
- * Phase 1: Always returns { tier: 'open', identity: null }
- * Phase 2: Extracts identity from getMcpAuthContext() (populated by
- *          Access JWT injection via createMcpHandler's authContext option),
- *          returns 'public' after sybil/agreement checks
- * Phase 3: Checks Hats/tokens/org membership, returns 'members' if authorized
- *
- * This function is the ONLY place tier resolution logic lives.
- * Tools never resolve tiers themselves.
+ * Phase 1: Always returns open tier (no authentication).
  */
-export async function resolveAuthContext(env: Env): Promise<AuthContext> {
-  // --- Phase 2: Authentication ---
-  // const mcpAuth = getMcpAuthContext();
-  // if (!mcpAuth?.props?.sub) {
-  //   return { identity: null, tier: 'open', address: null, roles: null };
-  // }
-  //
-  // const identity: Identity = {
-  //   userId: mcpAuth.props.sub as string,
-  //   name: (mcpAuth.props.name as string) ?? null,
-  //   email: (mcpAuth.props.email as string) ?? null,
-  //   provider: (mcpAuth.props.provider as string) ?? 'unknown',
-  // };
-  //
-  // --- Phase 3: Authorization ---
-  // const address = await env.IDENTITY_MAP.get(identity.userId);
-  // if (address) {
-  //   const roles = await checkHatsRoles(address, env);
-  //   if (roles.isMember || roles.isContributor) {
-  //     return { identity, tier: 'members', address, roles };
-  //   }
-  // }
-  //
-  // return { identity, tier: 'public', address: null, roles: null };
-
-  // Phase 1: Open tier only — no authentication
-  return { identity: null, tier: 'open', address: null, roles: null };
+export async function resolveAuthContext(_env: Env): Promise<AuthContext> {
+  return { identity: null, tier: 'open' };
 }
 ```
 
@@ -244,32 +201,7 @@ export function checkTierAccess(
 }
 ```
 
-### 2.5 Hats Protocol Configuration
-
-> **Note**: Dormant in Phase 1. Active when porch enables Members tier (Phase 3).
-
-| Setting | Value |
-|---------|-------|
-| Chain | Optimism (10) |
-| Contract | `0x3bc1A0Ad72417f2d411118085256fC53CBdDd137` |
-| Tree ID | 30 |
-
-| Hat Path | Role | Tier |
-|----------|------|------|
-| `30.3.1` | Contributor | `members` |
-| `30.3.5` | Community Member | `members` |
-| (none) | Public | `open` or `public` |
-
-```typescript
-import { treeIdToHatId } from '@hatsprotocol/sdk-v1-core';
-
-const HATS = {
-  contributor: treeIdToHatId(30, [3, 1]),
-  member: treeIdToHatId(30, [3, 5])
-};
-```
-
-### 2.6 Phase 2: authContext Injection
+### 2.5 Phase 2: authContext Injection
 
 When Cloudflare Access for SaaS is configured, the Worker receives authenticated requests with a `CF-Access-JWT-Assertion` header. The Worker parses this JWT, validates against `CF_ACCESS_AUD`, and passes the claims to `createMcpHandler` via the `authContext` option. This populates `getMcpAuthContext()` inside tools without any `OAuthProvider` dependency:
 
@@ -283,9 +215,9 @@ const handler = createMcpHandler(server, {
 });
 ```
 
-This is the **only** Worker-side change for Phase 2 auth. All tier resolution happens in `resolveAuthContext()` by uncommenting the Phase 2 block.
+This is the **only** Worker-side change for Phase 2 auth. All tier resolution happens in `resolveAuthContext()`.
 
-### 2.7 WaaP Integration (UI Client)
+### 2.6 WaaP Integration (UI Client)
 
 > **Note:** WaaP is a **frontend wallet SDK** that runs in the browser. It provides the wallet that signs SIWE messages. The knowledge server does not depend on WaaP directly.
 
@@ -694,14 +626,12 @@ export function truncateForMetadata(content: string): string {
 
 ### 4.5 KV Namespaces
 
-| Namespace | Purpose | TTL | Phase |
-|-----------|---------|-----|-------|
-| `ROLE_CACHE` | Hats roles | 5 min | Phase 3 (dormant) |
-| `ENS_CACHE` | ENS resolution | 1 hour | Phase 3 (dormant) |
-| `RERANK_CACHE` | Rerank results | 1 hour | Phase 1 (active) |
-| `SYNC_STATE` | Sync metadata | None | Phase 1 (active) |
+| Namespace | Purpose | TTL |
+|-----------|---------|-----|
+| `RERANK_CACHE` | Rerank results | 1 hour |
+| `SYNC_STATE` | Sync metadata | None |
 
-> **Removed in v0.12**: `OAUTH_KV` and `NONCE_KV` — no longer needed. Phase 2 uses `authContext` injection via `createMcpHandler`, not `OAuthProvider`. See `porch-spec.md` for rationale.
+> Phase 3 will add `ROLE_CACHE` and `ENS_CACHE` KV namespaces for Hats Protocol and ENS resolution caching.
 
 ---
 
@@ -1451,7 +1381,7 @@ Use the search_knowledge tool to find relevant documentation for both.`
 
 *Temporarily Open in Phase 1; will gate to Members tier when porch Phase 3 enables authorization.
 
-> **Removed in v0.12**: `save_link` and `create_draft` tools — write operations deferred to Phase 2+ when stateful agents with `needsApproval` are available.
+> Write tools (`save_link`, `create_draft`) deferred to Phase 2 when stateful agents with `needsApproval` are available.
 
 ### 7.8 Client Compatibility
 
@@ -1571,7 +1501,7 @@ Auto-generated from route definitions.
 
 **Architecture:** `AIChatAgent` (Durable Object) + AI SDK `tool()` function
 
-**Access:** Public tier via Cloudflare Access for SaaS (see `porch-spec.md` Phase 2)
+**Access:** Public tier via Cloudflare Access for SaaS (see §2.5)
 
 ```typescript
 import { AIChatAgent } from "agents/ai-chat-agent";
@@ -1623,7 +1553,7 @@ export class KnowledgeChatAgent extends AIChatAgent<Env> {
 
 **Architecture:** `Agent` as MCP Client connecting to partner DAOs
 
-**Access:** Members tier via Hats Protocol / token gating (see `porch-spec.md` Phase 3)
+**Access:** Members tier via Hats Protocol / token gating
 
 ```typescript
 import { Agent } from "agents";
@@ -1716,8 +1646,6 @@ export const errorHandler = (err: Error, c: Context) => {
 | R2 Bucket | `superbenefit-knowledge` | Document storage |
 | Vectorize Index | `superbenefit-knowledge-idx` | Vector search |
 | Queue | `superbenefit-knowledge-sync` | Event processing |
-| KV Namespace | `ROLE_CACHE` | Hats roles (dormant) |
-| KV Namespace | `ENS_CACHE` | ENS resolution (dormant) |
 | KV Namespace | `RERANK_CACHE` | Rerank results |
 | KV Namespace | `SYNC_STATE` | Sync metadata |
 
@@ -1749,8 +1677,6 @@ npx wrangler vectorize create-metadata-index superbenefit-knowledge-idx \
 npx wrangler queues create superbenefit-knowledge-sync
 
 # Create KV namespaces
-npx wrangler kv:namespace create ROLE_CACHE
-npx wrangler kv:namespace create ENS_CACHE
 npx wrangler kv:namespace create RERANK_CACHE
 npx wrangler kv:namespace create SYNC_STATE
 
@@ -1767,10 +1693,6 @@ npx wrangler r2 bucket notification create superbenefit-knowledge \
 # Required secrets (set via wrangler secret put)
 GITHUB_TOKEN=<fine_grained_pat>
 GITHUB_WEBHOOK_SECRET=<webhook_secret>
-
-# Dormant secrets (needed for Phase 3)
-MAINNET_RPC_URL=<ethereum_mainnet_rpc>
-OPTIMISM_RPC_URL=<optimism_rpc>
 
 # Phase 2 addition
 # CF_ACCESS_AUD=<access_application_audience_tag>
@@ -1806,8 +1728,6 @@ OPTIMISM_RPC_URL=<optimism_rpc>
   },
   
   "kv_namespaces": [
-    { "binding": "ROLE_CACHE", "id": "<kv_id>" },
-    { "binding": "ENS_CACHE", "id": "<kv_id>" },
     { "binding": "RERANK_CACHE", "id": "<kv_id>" },
     { "binding": "SYNC_STATE", "id": "<kv_id>" }
   ],
@@ -1837,21 +1757,13 @@ interface Env {
   AI: Ai;
   SYNC_WORKFLOW: Workflow;
   
-  // KV (active)
+  // KV
   RERANK_CACHE: KVNamespace;
   SYNC_STATE: KVNamespace;
   
-  // KV (dormant — Phase 3)
-  ROLE_CACHE: KVNamespace;
-  ENS_CACHE: KVNamespace;
-  
-  // Secrets (active)
+  // Secrets
   GITHUB_TOKEN: string;
   GITHUB_WEBHOOK_SECRET: string;
-  
-  // Secrets (dormant — Phase 3)
-  MAINNET_RPC_URL: string;
-  OPTIMISM_RPC_URL: string;
   
   // Config
   GITHUB_REPO: string;
@@ -1883,24 +1795,21 @@ interface Env {
 ```json
 {
   "dependencies": {
-    "@hatsprotocol/sdk-v1-core": "^0.10.0",
-    "@hono/zod-openapi": "^0.15.0",
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "agents": "^0.3.0",
-    "hono": "^4.0.0",
-    "viem": "^2.21.0",
-    "yaml": "^2.3.0",
-    "zod": "^3.23.0"
+    "@hono/zod-openapi": "^1.2.0",
+    "agents": "^0.3.6",
+    "hono": "^4.11.7",
+    "yaml": "^2.8.2",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250101.0",
-    "typescript": "^5.5.0",
-    "wrangler": "^3.60.0"
+    "@cloudflare/workers-types": "^4.20250320.0",
+    "typescript": "^5.8.3",
+    "wrangler": "^4.14.4"
   }
 }
 ```
 
-> **Removed in v0.12**: `workers-oauth-provider` — no longer a Worker dependency. Phase 2 auth handled by Cloudflare Access for SaaS at the infrastructure layer.
+> Phase 3 will add `@hatsprotocol/sdk-v1-core` and `viem` for Hats Protocol and SIWE verification.
 
 ---
 
@@ -1908,7 +1817,8 @@ interface Env {
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 0.12 | 2026-02-06 | Porch framework: replaced OAuthProvider with authContext injection, new tier model (open/public/members), routing split (MCP direct, REST through Hono), removed OAUTH_KV/NONCE_KV, removed workers-oauth-provider dependency, validated against Feb 2026 Cloudflare docs, added MCP Server Portals reference |
+| 0.13 | 2026-02-06 | Dormant code removal: deleted hats.ts, ens.ts, siwe-handler.ts; removed ROLE_CACHE/ENS_CACHE KV bindings; removed viem, @hatsprotocol/sdk-v1-core, workers-oauth-provider, octokit, just-pick dependencies; simplified AuthContext (dropped HatsRole, HATS_CONFIG, address/roles fields); removed porch-spec.md external reference (content absorbed into §2); updated dependency versions to match actual package.json |
+| 0.12 | 2026-02-06 | Porch framework: replaced OAuthProvider with authContext injection, new tier model (open/public/members), routing split (MCP direct, REST through Hono), removed OAUTH_KV/NONCE_KV, validated against Feb 2026 Cloudflare docs |
 | 0.11 | 2026-02-01 | MCP primitives: stateless createMcpHandler pattern, Resources section, Prompts section, permission wrapper pattern, client compatibility matrix, Phase 2/3 architecture, updated dependencies |
 | 0.10 | 2026-02-01 | ID-based retrieval pattern: documented Vector→R2 mapping, metadata structure for reranking, content truncation strategy, retrieval flow stages |
 | 0.9 | 2026-02-01 | Ontology alignment: file type hierarchy, updated schemas, Vectorize indexes, prerequisites section |

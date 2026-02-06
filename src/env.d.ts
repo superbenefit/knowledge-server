@@ -1,26 +1,17 @@
 // Extend the generated Env interface with secrets and deferred bindings.
 // Secrets are set via `wrangler secret put` and aren't in wrangler.jsonc.
-// Deferred bindings are commented in wrangler.jsonc until resources are created.
 
 // Augment the Cloudflare namespace (used by cloudflare:workers import)
 declare namespace Cloudflare {
   interface Env {
-    // Secrets (active)
+    // Secrets
     GITHUB_TOKEN: string;
     GITHUB_WEBHOOK_SECRET: string;
     GITHUB_REPO: string;
 
-    // Secrets (dormant — Phase 3)
-    MAINNET_RPC_URL: string;
-    OPTIMISM_RPC_URL: string;
-
-    // KV Namespaces (active)
+    // KV Namespaces
     RERANK_CACHE: KVNamespace;
     SYNC_STATE: KVNamespace;
-
-    // KV Namespaces (dormant — Phase 3)
-    ROLE_CACHE: KVNamespace;
-    ENS_CACHE: KVNamespace;
 
     // R2 Bucket
     KNOWLEDGE: R2Bucket;
@@ -41,22 +32,14 @@ declare namespace Cloudflare {
 
 // Also extend the global Env interface (used by Hono bindings)
 interface Env {
-  // Secrets (active)
+  // Secrets
   GITHUB_TOKEN: string;
   GITHUB_WEBHOOK_SECRET: string;
   GITHUB_REPO: string;
 
-  // Secrets (dormant — Phase 3)
-  MAINNET_RPC_URL: string;
-  OPTIMISM_RPC_URL: string;
-
-  // KV Namespaces (active)
+  // KV Namespaces
   RERANK_CACHE: KVNamespace;
   SYNC_STATE: KVNamespace;
-
-  // KV Namespaces (dormant — Phase 3)
-  ROLE_CACHE: KVNamespace;
-  ENS_CACHE: KVNamespace;
 
   // R2 Bucket
   KNOWLEDGE: R2Bucket;

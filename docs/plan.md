@@ -1,10 +1,9 @@
 # Knowledge Server: Claude Code Implementation Plan
 
-**Version:** 2.7  
+**Version:** 2.8  
 **Date:** February 6, 2026  
-**Spec Reference:** `spec-v0.12.md`  
-**Ontology Reference:** `ontology.md`  
-**Access Control Reference:** `porch-spec.md` v0.14
+**Spec Reference:** `spec.md` v0.13  
+**Ontology Reference:** `ontology.md`
 
 ## Overview
 
@@ -109,58 +108,43 @@ WaaP (Wallet as a Protocol) from human.tech/Holonym is validated for the authent
 └─────────────────────────────────────────┘
 ```
 
-> **Phase 1 note:** WaaP is not needed for Phase 1. All tools are Open tier. The architecture above documents how auth will flow in Phase 2 via Cloudflare Access for SaaS. See `porch-spec.md` for full details.
+> **Phase 1 note:** WaaP is not needed for Phase 1. All tools are Open tier. The architecture above documents how auth will flow in Phase 2 via Cloudflare Access for SaaS. See spec.md §2 for access control details.
 
 ---
 
 ## Current Progress
 
 - [x] Phase 0: Template scaffolded from `cloudflare/ai/demos/remote-mcp-github-oauth`
-- [x] Dependencies installed (hono, viem, @hatsprotocol/sdk-v1-core, etc.)
+- [x] Dependencies installed (hono, etc.)
 - [x] TypeScript compiles (`npm run type-check` passes)
 - [x] `src/env.d.ts` created for secret type definitions
-- [x] Porch spec v0.14 finalized — access control framework defined
+- [x] Porch access control framework defined (spec §2)
 - [x] Validation report: all architectural assumptions confirmed against Feb 2026 docs
-- [x] Recovery plan: OAuth removal and porch realignment documented
-- [ ] ~~Phase 0.5: GitHub OAuth App setup~~ → **Removed** (porch framework eliminates in-Worker OAuth)
-- [ ] Package 0: Schemas (v0.12 ontology + porch types)
+- [x] OAuth removal completed (PR #19 merged, commit 36223a8)
+- [x] Dormant code removed (hats.ts, ens.ts, siwe-handler.ts, unused deps)
+- [x] Infrastructure cleanup (secrets, KV namespaces, R2 event notifications)
+- [x] Webhook URL corrected, deployment verified, pipeline tested
+- [ ] Package 0: Schemas (v0.13 ontology + porch types)
 - [ ] Packages 1-5: Implementation
-- [ ] Package 6: Porch Framework + MCP Cleanup
 - [ ] Integration
 - [ ] **Knowledge base ontology implementation** (external dependency)
 
 ---
 
-## Recovery Context: OAuth Removal
+## Recovery Context: OAuth & Dormant Code Removal (COMPLETE)
 
-> **Background:** The codebase was scaffolded from `remote-mcp-github-oauth` template which includes `OAuthProvider`, GitHub OAuth handler, and related bindings. The porch framework (v0.14) moves authentication to infrastructure layer and eliminates in-Worker OAuth for Phase 1. See `knowledge-server-recovery.md` for detailed change inventory.
+> Completed via PR #19 (merged to main, commit 36223a8) and subsequent cleanup.
 
-### What Gets Removed
+### What Was Removed
 
-| File/Binding | Lines | Reason |
-|-------------|-------|--------|
-| `src/github-handler.ts` | ~200 | OAuth flow → porch Phase 2 |
-| `src/workers-oauth-utils.ts` | ~400 | CSRF, state, dialogs → porch Phase 2 |
-| `src/utils.ts` | ~80 | Upstream auth helpers |
-| `OAUTH_KV` binding | — | Not needed (authContext injection) |
-| `NONCE_KV` binding | — | Not needed until Phase 3 |
-| `workers-oauth-provider` dep | — | No longer a runtime dependency |
-| `GITHUB_CLIENT_ID` secret | — | OAuth app not used |
-| `GITHUB_CLIENT_SECRET` secret | — | OAuth app not used |
-| `COOKIE_ENCRYPTION_KEY` secret | — | No session management |
-
-Total: ~680 lines removed, 3 bindings removed, 3 secrets removed.
-
-### What Stays (Dormant for Phase 3)
-
-| File | Purpose |
-|------|---------|
-| `src/auth/hats.ts` | Hats Protocol role checking |
-| `src/auth/ens.ts` | ENS resolution for display |
-| `ROLE_CACHE` KV | Cached Hats roles |
-| `ENS_CACHE` KV | Cached ENS lookups |
-| `MAINNET_RPC_URL` | ENS resolution |
-| `OPTIMISM_RPC_URL` | Hats queries |
+| Category | Items | Status |
+|----------|-------|--------|
+| **OAuth files** | github-handler.ts, workers-oauth-utils.ts, utils.ts (~1160 lines) | ✅ Deleted |
+| **Dormant auth files** | auth/hats.ts, auth/ens.ts, auth/siwe-handler.ts | ✅ Deleted |
+| **KV bindings** | OAUTH_KV, NONCE_KV, ROLE_CACHE, ENS_CACHE | ✅ Removed |
+| **Dependencies** | workers-oauth-provider, @hatsprotocol/sdk-v1-core, viem, octokit, just-pick | ✅ Removed |
+| **Secrets** | GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, COOKIE_ENCRYPTION_KEY | ✅ Deleted |
+| **Types** | HatsRole, HATS_CONFIG, address/roles fields on AuthContext | ✅ Simplified |
 
 ---
 
@@ -177,7 +161,9 @@ This plan supports parallel development using Claude Code Web for isolated modul
 
 ### Work Packages
 
-Execute packages 1-5 in parallel after Package 0 is merged. Package 6 (Porch Framework + MCP Cleanup) follows integration.
+Execute packages 1-5 in parallel after Package 0 is merged.
+
+> **Package 6 (Porch Framework + MCP Cleanup) is COMPLETE** — OAuth removal (PR #19) and dormant code cleanup already done.
 
 ```
                     ┌─────────────────┐
@@ -216,14 +202,6 @@ Execute packages 1-5 in parallel after Package 0 is merged. Package 6 (Porch Fra
               │     Integration       │
               │  MCP Tools + Wiring   │
               │    CC Local only ⚠️   │
-              └───────────┬───────────┘
-                          │
-                          ▼
-              ┌───────────────────────┐
-              │     Package 6         │
-              │  Porch Framework +    │
-              │  MCP Cleanup          │
-              │    CC Web or Local    │
               └───────────────────────┘
 ```
 
@@ -402,16 +380,16 @@ export function extractContentTypeFromKey(key: string): ContentType {
 }
 ```
 
-### auth.ts — Porch Framework Types (v0.12)
+### auth.ts — Porch Framework Types (v0.13)
 
 ```typescript
 /**
  * Porch access control framework types.
- * See porch-spec.md v0.14 for full specification.
+ * See spec.md §2 for full specification.
  *
- * Phase 1: Only 'open' tier active
- * Phase 2: + 'public' tier via Access for SaaS
- * Phase 3: + 'members' tier via Hats/token gate
+ * Phase 1: Only 'open' tier active, identity is null
+ * Phase 2: Identity populated from Access JWT claims
+ * Phase 3: Hats Protocol role types added
  */
 
 export type AccessTier = 'open' | 'public' | 'members';
@@ -426,33 +404,13 @@ export interface Identity {
   userId: string;
   name: string | null;
   email: string | null;
-  provider: string;    // "github" | "siwe"
+  provider: string; // "github" | "siwe"
 }
 
 export interface AuthContext {
   identity: Identity | null;
   tier: AccessTier;
-  address: `0x${string}` | null;
-  roles: HatsRole | null;
 }
-
-export interface HatsRole {
-  hats: bigint[];
-  isMember: boolean;
-  isContributor: boolean;
-}
-
-// Hats Protocol configuration (dormant until Phase 3)
-export const HATS_CONFIG = {
-  chain: 'optimism' as const,
-  chainId: 10,
-  contract: '0x3bc1A0Ad72417f2d411118085256fC53CBdDd137' as const,
-  treeId: 30,
-  paths: {
-    contributor: [3, 1] as const,
-    member: [3, 5] as const,
-  },
-} as const;
 ```
 
 ### CC Web Kickoff Prompt
@@ -460,7 +418,7 @@ export const HATS_CONFIG = {
 ```
 I'm implementing Package 0 (Schemas) for the SuperBenefit knowledge-server.
 
-Reference: spec-v0.12.md Sections 2-4
+Reference: spec.md v0.13 Sections 2-4
 
 Create src/types/ with:
 
@@ -483,10 +441,7 @@ Create src/types/ with:
 3. auth.ts:
    - AccessTier: 'open' | 'public' | 'members' (porch framework)
    - TIER_LEVEL constants
-   - Identity interface (userId, name, email, provider)
-   - AuthContext interface (identity, tier, address, roles)
-   - HatsRole interface (hats, isMember, isContributor)
-   - HATS_CONFIG constants
+   - AuthContext interface (just { tier: AccessTier } for Phase 1)
 
 4. api.ts:
    - SearchFilters, SearchResult, RerankResult
@@ -505,62 +460,26 @@ The ontology document defines the full type hierarchy and fields.
 **Environment:** CC Web ✅  
 **Dependencies:** Package 0
 
-> **Scope change in v2.7**: OAuth files removed. This package now focuses on porch framework files + dormant auth utilities for Phase 3.
+> **Scope change in v2.8**: Complete. OAuth files deleted (PR #19), dormant Hats/ENS/SIWE files deleted. This package now contains only porch framework files.
 
 ```
 src/auth/
 ├── resolve.ts     # resolveAuthContext() — porch framework core
 ├── check.ts       # checkTierAccess() — tier comparison
-├── hats.ts        # Hats Protocol role checking (dormant)
-├── ens.ts         # ENS resolution (dormant)
 └── index.ts       # Exports
 ```
 
 ### resolve.ts — Porch Framework Core
 
 ```typescript
-import { getMcpAuthContext } from 'agents/mcp';
-import type { AuthContext, Identity } from '../types/auth';
+import type { AuthContext } from '../types/auth';
 
 /**
  * Resolve access context from the current request.
- *
- * Phase 1: Always returns { tier: 'open', identity: null }
- * Phase 2: Extracts identity from getMcpAuthContext() (populated by
- *          Access JWT injection via createMcpHandler's authContext option),
- *          returns 'public' after sybil/agreement checks
- * Phase 3: Checks Hats/tokens/org membership, returns 'members' if authorized
- *
- * This function is the ONLY place tier resolution logic lives.
- * Tools never resolve tiers themselves.
+ * Phase 1: Always returns open tier (no authentication).
  */
-export async function resolveAuthContext(env: Env): Promise<AuthContext> {
-  // --- Phase 2: Authentication ---
-  // const mcpAuth = getMcpAuthContext();
-  // if (!mcpAuth?.props?.sub) {
-  //   return { identity: null, tier: 'open', address: null, roles: null };
-  // }
-  //
-  // const identity: Identity = {
-  //   userId: mcpAuth.props.sub as string,
-  //   name: (mcpAuth.props.name as string) ?? null,
-  //   email: (mcpAuth.props.email as string) ?? null,
-  //   provider: (mcpAuth.props.provider as string) ?? 'unknown',
-  // };
-  //
-  // --- Phase 3: Authorization ---
-  // const address = await env.IDENTITY_MAP.get(identity.userId);
-  // if (address) {
-  //   const roles = await checkHatsRoles(address, env);
-  //   if (roles.isMember || roles.isContributor) {
-  //     return { identity, tier: 'members', address, roles };
-  //   }
-  // }
-  //
-  // return { identity, tier: 'public', address: null, roles: null };
-
-  // Phase 1: Open tier only — no authentication
-  return { identity: null, tier: 'open', address: null, roles: null };
+export async function resolveAuthContext(_env: Env): Promise<AuthContext> {
+  return { identity: null, tier: 'open' };
 }
 ```
 
@@ -586,33 +505,23 @@ export function checkTierAccess(
 ```
 I'm implementing Package 1 (Auth Module) for the SuperBenefit knowledge-server.
 
-Reference: spec-v0.12.md Section 2, porch-spec.md v0.14
+Reference: spec.md v0.13 Section 2
 
 This implements the porch access control framework for Phase 1 (Open tier only).
-There is NO OAuth, NO SIWE verification, NO token management in Phase 1.
+There is NO OAuth, NO SIWE verification, NO token management, NO Hats/ENS in Phase 1.
 
 Create src/auth/ with:
 
 1. resolve.ts:
    - resolveAuthContext(env): Promise<AuthContext>
-   - Phase 1: always returns { tier: 'open', identity: null, address: null, roles: null }
-   - Contains commented Phase 2/3 logic as documented architecture
-   - Import getMcpAuthContext from 'agents/mcp' (commented until Phase 2)
+   - Phase 1: always returns { tier: 'open' }
+   - Comment documents future Phase 2/3 extension points
 
 2. check.ts:
    - checkTierAccess(requiredTier, authContext): result
    - Returns { allowed: true, authContext } or { allowed: false, requiredTier, currentTier }
 
-3. hats.ts (dormant — kept for Phase 3):
-   - checkHatsRoles(address, deps): Promise<HatsRole>
-   - Use @hatsprotocol/sdk-v1-core for treeIdToHatId
-   - Cache results in ROLE_CACHE KV (5 min TTL)
-
-4. ens.ts (dormant — kept for Phase 3):
-   - resolveENS(address, deps): Promise<{ name?, avatar? }>
-   - Cache results in ENS_CACHE KV (1 hour TTL)
-
-5. index.ts: exports resolveAuthContext, checkTierAccess, and dormant utilities
+3. index.ts: exports resolveAuthContext and checkTierAccess
 
 Import types from src/types/auth.ts.
 ```
@@ -665,7 +574,7 @@ src/retrieval/
 ```
 I'm implementing Package 2 (Retrieval Module) for the SuperBenefit knowledge-server.
 
-Reference: spec-v0.12.md Section 6 (Retrieval System)
+Reference: spec.md v0.13 Section 6 (Retrieval System)
 
 This implements the ID-based retrieval pattern:
 - Vector ID = Document ID (e.g., "cell-governance")
@@ -728,7 +637,7 @@ src/api/
 ```
 I'm implementing Package 3 (REST API) for the SuperBenefit knowledge-server.
 
-Reference: spec-v0.12.md Section 8 (Public REST API)
+Reference: spec.md v0.13 Section 8 (Public REST API)
 
 Create src/api/ with:
 
@@ -774,7 +683,7 @@ src/sync/
 ```
 I'm implementing Package 4 (Sync Workflow) for the SuperBenefit knowledge-server.
 
-Reference: spec-v0.12.md Section 5 (Sync Layer)
+Reference: spec.md v0.13 Section 5 (Sync Layer)
 
 Create src/sync/ with:
 
@@ -819,7 +728,7 @@ src/consumers/
 ```
 I'm implementing Package 5 (Queue Consumer) for the SuperBenefit knowledge-server.
 
-Reference: spec-v0.12.md Sections 4-5
+Reference: spec.md v0.13 Sections 4-5
 
 Create src/consumers/ with:
 
@@ -842,13 +751,10 @@ Import types from src/types/.
 
 ---
 
-## Package 6: Porch Framework + MCP Cleanup
+## Package 6: Porch Framework + MCP Cleanup (COMPLETE)
 
-**Branch:** `feat/porch-framework`  
-**Environment:** CC Web or CC Local  
-**Dependencies:** Integration complete
-
-> **Scope change in v2.7**: Previously "MCP Resources & Prompts". Now includes OAuth removal, porch framework wiring, and routing split. Resources and prompts code (from v2.6) is preserved.
+**Status:** ✅ Complete (PR #19 + dormant code cleanup)  
+**Branch:** Merged to `main` (commit 36223a8)
 
 ### Files to Create/Update
 
@@ -973,7 +879,7 @@ export default {
 ```
 I'm implementing Package 6 (Porch Framework + MCP Cleanup) for the SuperBenefit knowledge-server.
 
-Reference: spec-v0.12.md Sections 2 and 7, porch-spec.md v0.14, knowledge-server-recovery.md
+Reference: spec.md v0.13 Sections 2 and 7
 
 This package:
 1. Removes OAuth files (github-handler.ts, workers-oauth-utils.ts, utils.ts)
@@ -1054,13 +960,9 @@ npx wrangler vectorize create-metadata-index superbenefit-knowledge-idx \
 # Create Queue
 npx wrangler queues create superbenefit-knowledge-sync
 
-# Create KV namespaces (active)
+# Create KV namespaces
 npx wrangler kv:namespace create RERANK_CACHE
 npx wrangler kv:namespace create SYNC_STATE
-
-# Create KV namespaces (dormant — Phase 3)
-npx wrangler kv:namespace create ROLE_CACHE
-npx wrangler kv:namespace create ENS_CACHE
 
 # Configure R2 event notifications
 npx wrangler r2 bucket notification create superbenefit-knowledge \
@@ -1069,7 +971,7 @@ npx wrangler r2 bucket notification create superbenefit-knowledge \
   --prefix content/
 ```
 
-> **Removed in v2.7**: `OAUTH_KV` and `NONCE_KV` creation commands. See recovery plan for dashboard cleanup of existing namespaces.
+> KV namespaces `OAUTH_KV`, `NONCE_KV`, `ROLE_CACHE`, and `ENS_CACHE` have been deleted from the Cloudflare dashboard.
 
 ---
 
@@ -1128,19 +1030,21 @@ fetch('http://localhost:8788/api/v1/entries')
 ## Deployment Checklist
 
 1. [ ] All packages merged to main
-2. [ ] OAuth files deleted (github-handler.ts, workers-oauth-utils.ts, utils.ts)
-3. [ ] `wrangler.jsonc` has actual binding IDs (no OAUTH_KV, no NONCE_KV)
-4. [ ] Active secrets configured: `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET`
-5. [ ] Removed secrets: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `COOKIE_ENCRYPTION_KEY`
-6. [ ] Vectorize metadata indexes created
-7. [ ] R2 event notifications configured
-8. [ ] GitHub webhook pointing to deployed URL
-9. [ ] Deploy: `npm run deploy`
-10. [ ] Verify: MCP Inspector connects (no auth)
-11. [ ] Verify: REST API responds
-12. [ ] Verify: `resolveAuthContext()` returns `{ tier: 'open' }`
-13. [ ] Trigger sync: push to knowledge-base
-14. [ ] Dashboard cleanup: delete unused KV namespaces (see recovery plan)
+2. [x] OAuth files deleted (github-handler.ts, workers-oauth-utils.ts, utils.ts)
+3. [x] Dormant files deleted (auth/hats.ts, auth/ens.ts, auth/siwe-handler.ts)
+4. [x] `wrangler.jsonc` cleaned (no OAUTH_KV, NONCE_KV, ROLE_CACHE, ENS_CACHE)
+5. [x] Active secrets configured: `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET`
+6. [x] Removed secrets: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `COOKIE_ENCRYPTION_KEY`
+7. [x] Removed dependencies: workers-oauth-provider, viem, @hatsprotocol/sdk-v1-core, octokit, just-pick
+8. [ ] Vectorize metadata indexes created
+9. [ ] R2 event notifications configured
+10. [x] GitHub webhook pointing to deployed URL
+11. [x] Deploy: `npm run deploy`
+12. [ ] Verify: MCP Inspector connects (no auth)
+13. [ ] Verify: REST API responds
+14. [ ] Verify: `resolveAuthContext()` returns `{ identity: null, tier: 'open' }`
+15. [ ] Trigger sync: push to knowledge-base
+16. [x] Dashboard cleanup: deleted unused KV namespaces
 
 ---
 
@@ -1155,11 +1059,11 @@ fetch('http://localhost:8788/api/v1/entries')
 
 **Architecture:** `AIChatAgent` + AI SDK `tool()` with `needsApproval`
 
-**Porch additions:**
+**Auth additions:**
 - Register knowledge server in Cloudflare Access for SaaS
 - Configure GitHub + SIWE as IdPs in Access
 - Add middleware to parse `CF-Access-JWT-Assertion` → inject `authContext`
-- Uncomment Phase 2 block in `resolveAuthContext()`
+- Extend `resolveAuthContext()` to populate Identity from JWT claims
 - Optionally register in MCP Server Portal
 
 **Key additions:**
@@ -1178,37 +1082,37 @@ fetch('http://localhost:8788/api/v1/entries')
 
 **Architecture:** `Agent` as MCP Client with `addMcpServer()`
 
-**Porch additions:**
-- Uncomment Phase 3 block in `resolveAuthContext()`
+**Auth additions:**
+- Extend `resolveAuthContext()` to check Hats/tokens/org membership
 - `IDENTITY_MAP` KV for GitHub→wallet mapping
 - `HATS_SUBGRAPH_URL` for subgraph queries
-- Activate dormant `hats.ts`, `ens.ts`, `ROLE_CACHE`, `ENS_CACHE`
+- Add `@hatsprotocol/sdk-v1-core`, `viem` dependencies
+- Add `ROLE_CACHE`, `ENS_CACHE` KV namespaces
+- Add `MAINNET_RPC_URL`, `OPTIMISM_RPC_URL` secrets
+- Create `src/auth/hats.ts`, `src/auth/ens.ts`, `src/auth/siwe-handler.ts`
 
 ---
 
-## Dependencies (v0.12)
+## Dependencies (v0.13)
 
 ```json
 {
   "dependencies": {
-    "@hatsprotocol/sdk-v1-core": "^0.10.0",
-    "@hono/zod-openapi": "^0.15.0",
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "agents": "^0.3.0",
-    "hono": "^4.0.0",
-    "viem": "^2.21.0",
-    "yaml": "^2.3.0",
-    "zod": "^3.23.0"
+    "@hono/zod-openapi": "^1.2.0",
+    "agents": "^0.3.6",
+    "hono": "^4.11.7",
+    "yaml": "^2.8.2",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250101.0",
-    "typescript": "^5.5.0",
-    "wrangler": "^3.60.0"
+    "@cloudflare/workers-types": "^4.20250320.0",
+    "typescript": "^5.8.3",
+    "wrangler": "^4.14.4"
   }
 }
 ```
 
-> **Removed in v2.7**: `workers-oauth-provider` — no longer a Worker dependency. Phase 2 auth handled by Cloudflare Access for SaaS at the infrastructure layer.
+> Phase 3 will add `@hatsprotocol/sdk-v1-core` and `viem`.
 
 ---
 
@@ -1216,7 +1120,8 @@ fetch('http://localhost:8788/api/v1/entries')
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 2.7 | 2026-02-06 | Porch framework: replaced OAuthProvider with authContext injection, new tier model (open/public/members), routing split (MCP direct, REST through Hono), removed Phase 0.5 OAuth setup, removed OAUTH_KV/NONCE_KV, removed workers-oauth-provider, updated Package 1 (auth → porch framework), updated Package 6 (porch cleanup), added recovery context, simplified testing (no auth config needed) |
+| 2.8 | 2026-02-06 | Dormant code removal: deleted hats.ts, ens.ts, siwe-handler.ts; removed octokit/just-pick from package.json; marked Package 6 complete; updated deployment checklist with completed items; removed porch-spec.md external references (absorbed into spec §2); updated all spec references to v0.13; updated dependency versions to match actual package.json |
+| 2.7 | 2026-02-06 | Porch framework: replaced OAuthProvider with authContext injection, new tier model (open/public/members), routing split, removed dormant code, simplified AuthContext, recovery context |
 | 2.6 | 2026-02-01 | MCP patterns: stateless createMcpHandler, permission wrapper, Package 6 (Resources/Prompts), phased architecture summary, future phases reference, updated dependencies |
 | 2.5 | 2026-02-01 | ID-based retrieval: storage.ts types, fetch.ts module, updated vectorize consumer |
 | 2.4 | 2026-02-01 | Ontology alignment: Package 0 content model, v0.9 schema updates |

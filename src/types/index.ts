@@ -62,11 +62,9 @@ export {
   AccessTierSchema,
   TIER_LEVEL,
   IdentitySchema,
-  HatsRoleSchema,
   AuthContextSchema,
-  HATS_CONFIG,
 } from './auth';
-export type { AccessTier, Identity, HatsRole, AuthContext } from './auth';
+export type { AccessTier, Identity, AuthContext } from './auth';
 
 // API (spec sections 6, 8)
 export {
