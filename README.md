@@ -45,6 +45,15 @@ curl http://localhost:8788/api/v1/search?q=governance
 - [Specification](docs/spec.md) (v0.11) — Full architecture and API spec
 - [Implementation Plan](docs/plan.md) (v2.6) — Phased build plan
 - [CLAUDE.md](CLAUDE.md) — AI assistant context and code standards
+- **Source Documentation** (`docs/src/`) — Per-directory developer guides:
+  - [index.md](docs/src/index.md) — Entry point + routing
+  - [types.md](docs/src/types.md) — Type system + content ontology
+  - [auth.md](docs/src/auth.md) — Porch access control framework
+  - [mcp.md](docs/src/mcp.md) — MCP server (tools, resources, prompts)
+  - [api.md](docs/src/api.md) — REST API routes + OpenAPI
+  - [retrieval.md](docs/src/retrieval.md) — Three-stage search pipeline
+  - [sync.md](docs/src/sync.md) — GitHub sync workflow + markdown parsing
+  - [consumers.md](docs/src/consumers.md) — Queue consumer (R2 → Vectorize)
 
 ## Status
 
