@@ -7,7 +7,6 @@ MCP server + public REST API for SuperBenefit DAO's knowledge base.
 - **MCP Server** — AI tools (search, define, browse) via Model Context Protocol
 - **REST API** — Read-only public API for web and external integrations
 - **GitHub Sync** — Syncs knowledge base from GitHub to R2 to Vectorize
-- **Porch Framework** — Tiered access control (Phase 1: Open tier, no auth required)
 
 ## Architecture
 
