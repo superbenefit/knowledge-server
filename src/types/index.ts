@@ -63,8 +63,8 @@ export {
   TIER_LEVEL,
   IdentitySchema,
   AuthContextSchema,
-} from './auth';
-export type { AccessTier, Identity, AuthContext } from './auth';
+} from '../auth/types';
+export type { AccessTier, Identity, AuthContext, PorchRoles } from '../auth/types';
 
 // API (spec sections 6, 8)
 export {

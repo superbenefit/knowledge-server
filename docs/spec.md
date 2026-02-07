@@ -1,7 +1,9 @@
-# SuperBenefit AI Tools Infrastructure Specification
+# Knowledge Server Specification
 
-**Version:** 0.13  
-**Date:** February 6, 2026
+**Version:** 0.16  
+**Date:** February 7, 2026  
+**Porch Spec Alignment:** v0.19  
+**Ontology Alignment:** ontology.md (Feb 7, 2026)
 
 ---
 
@@ -9,7 +11,9 @@
 
 ### 1.1 Purpose
 
-This specification defines the architecture for SuperBenefit's AI tools infrastructure. The system enables DAO members to access curated AI tools through a unified MCP interface, backed by a synchronized knowledge base from GitHub and authenticated via the porch access control framework. A public REST API provides unauthenticated read access for external consumers and web integrations.
+This specification defines the architecture for SuperBenefit's knowledge server — the first MCP server built on the porch framework. The system enables DAO members and the public to access curated AI tools through an MCP interface, backed by a synchronized knowledge base from GitHub. A public REST API provides unauthenticated read access for external consumers and web integrations.
+
+Access control is provided by the porch framework (`@superbenefit/mcporch`), which defines shared types, auth resolution, and tier checking across all SB MCP servers. This server follows the same conventions any future SB MCP server will follow.
 
 ### 1.2 Prerequisites
 
@@ -17,25 +21,24 @@ This specification defines the architecture for SuperBenefit's AI tools infrastr
 
 Before content can be synced to the knowledge server, the knowledge base repository must implement the ontology defined in `ontology.md`. This includes:
 
-1. Directory restructuring (`artifacts/`, `data/`, `links/`, `tags/`, `notes/`, `drafts/`)
+1. Directory restructuring (`docs/`, `data/`, `drafts/`)
 2. Metadata Menu fileClass definitions in `/tools/types/`
 3. Migration of existing content to new structure
-4. Addition of required frontmatter fields (`group`, `release`, etc.)
+4. Addition of required frontmatter fields (`type`, `group`, etc.)
 
 The knowledge server schemas depend on this structure being in place. See ontology.md "Migration Tasks" section for the implementation checklist.
 
 ### 1.3 Design Principles
 
 1. **Cloudflare-native** — No containers, Kubernetes, or external orchestration
-2. **Single connection point** — Members configure one URL, get all tools
-3. **Porch access control** — Three-tier framework: Open → Public → Members
-4. **R2 as canonical store** — GitHub syncs to R2; consumers read from R2
-5. **Event-driven updates** — R2 notifications trigger consumer updates
-6. **Two-stage retrieval** — Metadata filtering + reranking for quality
-7. **ID-based document lookup** — Vector ID maps directly to R2 object key
-8. **Dual interface** — MCP for AI tools, REST for web/external access
-9. **Schema-first** — Single source of truth for content types across all consumers
-10. **Phased evolution** — Stateless tools → Stateful agents → Federation
+2. **Porch conventions** — Standard auth/, fetch handler, tool pattern from `@superbenefit/mcporch`
+3. **R2 as canonical store** — GitHub syncs to R2; consumers read from R2
+4. **Event-driven updates** — R2 notifications trigger consumer updates
+5. **Two-stage retrieval** — Metadata filtering + reranking for quality
+6. **ID-based document lookup** — Vector ID maps directly to R2 object key
+7. **Dual interface** — MCP for AI tools, REST for web/external access
+8. **Schema-first** — Single source of truth for content types across all consumers
+9. **Phased evolution** — Stateless tools → Stateful agents → Federation
 
 ### 1.4 Key Architectural Decisions
 
@@ -44,7 +47,7 @@ The knowledge server schemas depend on this structure being in place. See ontolo
 - Phase 2 adds auth via Cloudflare Access for SaaS — infrastructure-layer, not Worker code
 - `authContext` injection into `createMcpHandler` replaces `OAuthProvider` wrapper entirely
 - ~680 lines of OAuth code eliminated from Worker; auth becomes a platform concern
-- New SB servers get auth for free by registering in the same Portal
+- New SB MCP servers get auth for free by registering in the MCPorch Portal
 
 **Why R2 as canonical store (not direct to Vectorize)?**
 - Single source of truth for all consumers
@@ -77,17 +80,15 @@ The knowledge server schemas depend on this structure being in place. See ontolo
 
 | Component | Official Reference |
 |-----------|-------------------|
-| createMcpHandler (stateless) | `npm create cloudflare@latest -- --template=cloudflare/ai/demos/remote-mcp-server` |
-| createMcpHandler + Access for SaaS | `npm create cloudflare@latest -- --template=cloudflare/ai/demos/remote-mcp-cf-access` |
-| McpAgent (stateful, Phase 2+) | `npm create cloudflare@latest -- --template=cloudflare/ai/demos/remote-mcp-github-oauth` |
+| Phase 1 scaffold | [cloudflare/agents/examples/mcp-worker](https://github.com/cloudflare/agents/tree/main/examples/mcp-worker) |
+| Phase 2 (Access for SaaS) | [cloudflare/ai/demos/remote-mcp-cf-access](https://github.com/cloudflare/ai/tree/main/demos/remote-mcp-cf-access) |
+| Phase 2 (authContext injection) | [cloudflare/agents/examples/mcp-worker-authenticated](https://github.com/cloudflare/agents/tree/main/examples/mcp-worker-authenticated) |
+| Stateful MCP (Phase 2+) | [cloudflare/agents/examples/mcp](https://github.com/cloudflare/agents/tree/main/examples/mcp) |
 | Workflows | `npm create cloudflare@latest -- --template=cloudflare/workflows-starter` |
 | R2 Events | [developers.cloudflare.com/r2/tutorials/upload-logs-event-notifications](https://developers.cloudflare.com/r2/tutorials/upload-logs-event-notifications/) |
-| SIWE | [github.com/spruceid/siwe-oidc](https://github.com/spruceid/siwe-oidc) |
 | Hono OpenAPI | [github.com/honojs/middleware/tree/main/packages/zod-openapi](https://github.com/honojs/middleware/tree/main/packages/zod-openapi) |
 | RAG Tutorial | [developers.cloudflare.com/workers-ai/guides/tutorials/build-a-retrieval-augmented-generation-ai](https://developers.cloudflare.com/workers-ai/guides/tutorials/build-a-retrieval-augmented-generation-ai/) |
-| AIChatAgent | [developers.cloudflare.com/agents/api-reference/agents-api](https://developers.cloudflare.com/agents/api-reference/agents-api/) |
-| MCP Client API | [developers.cloudflare.com/agents/model-context-protocol/mcp-client-api](https://developers.cloudflare.com/agents/model-context-protocol/mcp-client-api/) |
-| MCP Server Portals | [developers.cloudflare.com/agents/model-context-protocol/mcp-server-portals](https://developers.cloudflare.com/agents/model-context-protocol/mcp-server-portals/) |
+| MCP Server Portals | [developers.cloudflare.com/cloudflare-one/access-controls/ai-controls/mcp-portals](https://developers.cloudflare.com/cloudflare-one/access-controls/ai-controls/mcp-portals/) |
 
 ### 1.6 System Architecture
 
@@ -103,7 +104,7 @@ The knowledge server schemas depend on this structure being in place. See ontolo
 └────────────────────────────┼─────────────────────────────────────────────┘
                              ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  Application Layer (porch.superbenefit.dev)                               │
+│  Knowledge Server (Cloudflare Worker)                                    │
 │                                                                          │
 │  Public REST API (no auth, CORS enabled)                                 │
 │  ├── /api/v1/entries         → List/filter entries                       │
@@ -123,17 +124,19 @@ The knowledge server schemas depend on this structure being in place. See ontolo
 
 ### 1.7 Phased Architecture
 
-| Phase | Focus | Architecture | Access |
-|-------|-------|--------------|--------|
-| **1. Foundation** | Search, retrieval, API | Stateless `createMcpHandler` | Open tier only (no auth) |
-| **2. Stateful Services** | AI chat, agents, PRs | `AIChatAgent` + AI SDK `tool()` | + Public tier (Access for SaaS) |
-| **3. Knowledge Commons** | Multi-DAO federation | `Agent` as MCP Client | + Members tier (Hats/token gate) |
+Porch access tiers apply to all registered MCP servers — when a phase ships, every server gains that tier's capabilities. The knowledge server's own evolution builds on top of these tiers:
+
+| Phase | Knowledge Server Focus | Architecture | Porch Tier |
+|-------|----------------------|--------------|------------|
+| **1. Foundation** | Search, retrieval, API | Stateless `createMcpHandler` | Open (no auth) |
+| **2. Stateful Services** | AI chat, agents, PRs | `AIChatAgent` + AI SDK `tool()` | + Public (Access for SaaS) |
+| **3. Knowledge Commons** | Multi-DAO federation | `Agent` as MCP Client | + Members (porch Phase 3) |
 
 ---
 
 ## 2. Access Control
 
-This section defines the access control framework for the knowledge server.
+Access control is provided by the porch framework. This section documents the knowledge server's use of the porch types and patterns. The porch spec (`@superbenefit/mcporch` spec.md) is the canonical reference for the full tier model, phase design, and auth resolution architecture.
 
 ### 2.1 Tier Model
 
@@ -141,12 +144,14 @@ This section defines the access control framework for the knowledge server.
 |------|-----------|----------------|---------------|
 | **Open** | Non-excludable, non-rivalrous | None | None |
 | **Public** | Non-excludable, rivalrous | Required (wallet or GitHub) | Sybil resistance |
-| **Members** | Excludable, rivalrous | Required | Hats/token/org check |
+| **Members** | Excludable, rivalrous | Required | Role/token check |
 
-### 2.2 Framework Interface
+### 2.2 Porch Types
+
+The knowledge server uses the standard porch types from `src/auth/types.ts`:
 
 ```typescript
-// src/types/auth.ts
+// src/auth/types.ts — standard porch types, identical across all SB MCP servers
 
 export type AccessTier = 'open' | 'public' | 'members';
 
@@ -166,29 +171,32 @@ export interface Identity {
 export interface AuthContext {
   identity: Identity | null;
   tier: AccessTier;
+  address: `0x${string}` | null;
+  roles: PorchRoles | null;  // see porch spec for PorchRoles definition
 }
 ```
 
-> **Phase 1**: `identity` is always `null`. Phase 2 populates it from Access JWT claims. Phase 3 extends with Hats Protocol role checking (new types added at that time).
+> **Phase 1**: `identity`, `address`, and `roles` are always `null`. Phase 2 populates `identity` from Access JWT claims. Phase 3 populates `address` and `roles` via the porch authorization module (see porch spec §Phase 3 Design).
 
 ### 2.3 Auth Context Resolution
 
 ```typescript
-// src/auth/resolve.ts
+// src/auth/resolve.ts — standard porch pattern
 
 /**
  * Resolve access context from the current request.
  * Phase 1: Always returns open tier (no authentication).
+ * See porch spec for Phase 2/3 commented implementation.
  */
 export async function resolveAuthContext(_env: Env): Promise<AuthContext> {
-  return { identity: null, tier: 'open' };
+  return { identity: null, tier: 'open', address: null, roles: null };
 }
 ```
 
 ### 2.4 Tier Checking
 
 ```typescript
-// src/auth/check.ts
+// src/auth/check.ts — standard porch pattern
 
 export function checkTierAccess(
   requiredTier: AccessTier,
@@ -203,59 +211,64 @@ export function checkTierAccess(
 
 ### 2.5 Phase 2: authContext Injection
 
-When Cloudflare Access for SaaS is configured, the Worker receives authenticated requests with a `CF-Access-JWT-Assertion` header. The Worker parses this JWT, validates against `CF_ACCESS_AUD`, and passes the claims to `createMcpHandler` via the `authContext` option. This populates `getMcpAuthContext()` inside tools without any `OAuthProvider` dependency:
+When Cloudflare Access for SaaS is configured (porch Phase 2), the Worker receives authenticated requests with a `CF-Access-JWT-Assertion` header. The fetch handler parses this JWT, validates against `CF_ACCESS_AUD`, and passes the claims to `createMcpHandler` via the `authContext` option. This populates `getMcpAuthContext()` inside tools without any `OAuthProvider` dependency:
 
 ```typescript
 // Phase 2 addition to src/index.ts fetch handler
-const claims = await validateAccessJWT(request, env.CF_ACCESS_AUD);
+const claims = await resolveAuthFromHeaders(request, env);
 const handler = createMcpHandler(server, {
   route: '/mcp',
-  corsOptions: { origin: '*' },
   authContext: claims ? { props: claims } : undefined,
 });
 ```
 
-This is the **only** Worker-side change for Phase 2 auth. All tier resolution happens in `resolveAuthContext()`.
+This is the **only** Worker-side change for Phase 2 auth. All tier resolution happens in `resolveAuthContext()`. See the porch spec §Phase 2 Design for the full infrastructure description.
 
-### 2.6 WaaP Integration (UI Client)
+### 2.6 Frontend Identity (WaaP)
 
-> **Note:** WaaP is a **frontend wallet SDK** that runs in the browser. It provides the wallet that signs SIWE messages. The knowledge server does not depend on WaaP directly.
-
-| Auth Method | User Type | How It Works |
-|-------------|-----------|--------------|
-| Wallet | Web3 natives | Browser wallets (MetaMask, etc.) via WaaP's EIP-1193 interface |
-| Email | Newcomers | WaaP creates MPC wallet (2PC with Ika network) |
-| Social | Newcomers | GitHub/Discord/Google → MPC wallet via WaaP |
-
-WaaP (`@human.tech/waap-sdk`) runs in the frontend chat interfaces (`front.porch.superbenefit.dev/ai` and `back.porch.superbenefit.dev/ai`). It handles wallet creation and SIWE message signing. The signed SIWE message flows through the SIWE OIDC IdP (a separate Worker) registered in Cloudflare Access, which issues standard OIDC tokens. The knowledge server receives these as Access JWTs — it never interacts with WaaP directly.
+WaaP is a frontend wallet SDK that runs in the browser. It handles wallet creation, SIWE message signing, and social login flows. The knowledge server does not depend on WaaP directly — it receives standard Access JWTs. See the porch spec §Phase 2 Design for the full identity provider architecture.
 
 ---
 
 ## 3. Content Model
 
-### 3.1 Knowledge Base Directory Structure
+### 3.1 Knowledge Base Filesystem
+
+The knowledge base uses a two-space model: **docs** for creative outputs organized by authoring group, and **data** for structured records organized by content type.
+
+- **docs/** — arbitrary file trees at group discretion. Content type is determined by frontmatter `type` field, not path.
+- **data/** — flat buckets organized strictly by content type/sub-type. Type is inferred from path.
+- **Official Releases** — any folder in docs/ containing an `index.base` file is surfaced as a release in consumer UIs. Release identity comes from the sibling `index.md` frontmatter. Releases can be nested.
 
 ```
 knowledge-base/
-├── artifacts/           # resources and stories
-│   ├── patterns/        # pattern — reusable solutions
-│   ├── practices/       # practice — documented ways of doing
-│   ├── primitives/      # primitive — foundational building blocks
-│   ├── protocols/       # protocol — formal procedures
-│   ├── playbooks/       # playbook — implementation guides
-│   ├── questions/       # question — research questions
-│   ├── studies/         # study — case studies
-│   └── articles/        # article — essays, publications
-├── data/                # entities/actors
-│   ├── people/          # person — people profiles
-│   ├── groups/          # group — organizations, cells, DAOs
-│   ├── projects/        # project — time-bounded endeavors
-│   ├── places/          # place — locations, bioregions
-│   └── gatherings/      # gathering — events, conferences
-├── links/               # link — curated external resources
-├── tags/                # tag — lexicon definitions
-├── notes/               # file — working documents
-└── drafts/              # file — unpublished content
+├── docs/                              # Creative outputs, organized by group
+│   ├── {group}/                       # e.g., dao-primitives/, rpp/, ifp/
+│   │   └── ...                        # Arbitrary structure; any content type
+│   │       ├── index.md               # Release identity (frontmatter)
+│   │       └── index.base             # Marks folder as official release
+│   └── ...
+│
+├── data/                              # Structured records, organized by type
+│   ├── concepts/                      # tag (lexicon definitions; was tags/)
+│   ├── links/                         # link (curated external resources)
+│   ├── resources/                     # resource sub-types
+│   │   ├── patterns/                  # pattern
+│   │   ├── practices/                 # practice
+│   │   ├── primitives/                # primitive
+│   │   ├── protocols/                 # protocol
+│   │   └── playbooks/                 # playbook
+│   ├── stories/                       # story sub-types
+│   │   ├── studies/                   # study
+│   │   └── articles/                  # article
+│   ├── questions/                     # question (standalone)
+│   ├── people/                        # person
+│   ├── groups/                        # group
+│   ├── projects/                      # project
+│   ├── places/                        # place
+│   └── gatherings/                    # gathering
+│
+└── drafts/                            # Local only, gitignored
 ```
 
 ### 3.2 Type Hierarchy
@@ -267,15 +280,16 @@ file (root type)
 ├── reference (extends file) — organizational content
 │   ├── index — navigation pages
 │   ├── link — external resources
-│   └── tag — lexicon definitions
+│   └── tag — lexicon definitions (concepts)
 │
 ├── resource (extends file) — things that can be commoned
 │   ├── pattern — reusable solutions
 │   ├── practice — documented ways of doing
 │   ├── primitive — foundational building blocks
 │   ├── protocol — formal procedures
-│   ├── playbook — implementation guides
-│   └── question — research questions
+│   └── playbook — implementation guides
+│
+├── question (extends file) — open research questions
 │
 ├── story (extends file) — narratives
 │   ├── study — case studies
@@ -289,7 +303,7 @@ file (root type)
     └── gathering — events, conferences
 ```
 
-**Note**: The `guide` type from spec v0.8 is deprecated; use `article` for written guides.
+**Note**: `question` is a standalone type, not a resource sub-type. Per Simon Grant's knowledge commons ontology, questions "sit at the growing edge of knowledge" — they represent generative unknowns, not commoned artifacts. The `guide` type from spec v0.8 is deprecated; use `article` for written guides.
 
 ### 3.3 Content Type Enum
 
@@ -300,7 +314,9 @@ export const ContentTypeSchema = z.enum([
   // Reference types
   'reference', 'index', 'link', 'tag',
   // Resource types
-  'resource', 'pattern', 'practice', 'primitive', 'protocol', 'playbook', 'question',
+  'resource', 'pattern', 'practice', 'primitive', 'protocol', 'playbook',
+  // Question (standalone)
+  'question',
   // Story types
   'story', 'study', 'article',
   // Data types
@@ -314,7 +330,7 @@ export type ContentType = z.infer<typeof ContentTypeSchema>;
 
 ```typescript
 export const RESOURCE_TYPES: ContentType[] = [
-  'pattern', 'practice', 'primitive', 'protocol', 'playbook', 'question'
+  'pattern', 'practice', 'primitive', 'protocol', 'playbook'
 ];
 export const STORY_TYPES: ContentType[] = ['study', 'article'];
 export const REFERENCE_TYPES: ContentType[] = ['index', 'link', 'tag'];
@@ -327,23 +343,24 @@ export const DATA_TYPES: ContentType[] = [
 
 ```typescript
 export const PATH_TYPE_MAP: Record<string, ContentType> = {
-  'artifacts/patterns': 'pattern',
-  'artifacts/practices': 'practice',
-  'artifacts/primitives': 'primitive',
-  'artifacts/protocols': 'protocol',
-  'artifacts/playbooks': 'playbook',
-  'artifacts/questions': 'question',
-  'artifacts/studies': 'study',
-  'artifacts/articles': 'article',
-  'data/people': 'person',
-  'data/groups': 'group',
-  'data/projects': 'project',
-  'data/places': 'place',
-  'data/gatherings': 'gathering',
-  'links': 'link',
-  'tags': 'tag',
-  'notes': 'file',
-  'drafts': 'file',
+  // Data — type-sorted
+  'data/concepts':              'tag',
+  'data/links':                 'link',
+  'data/resources/patterns':    'pattern',
+  'data/resources/practices':   'practice',
+  'data/resources/primitives':  'primitive',
+  'data/resources/protocols':   'protocol',
+  'data/resources/playbooks':   'playbook',
+  'data/stories/studies':       'study',
+  'data/stories/articles':      'article',
+  'data/questions':             'question',
+  'data/people':                'person',
+  'data/groups':                'group',
+  'data/projects':              'project',
+  'data/places':                'place',
+  'data/gatherings':            'gathering',
+  // Docs — type from frontmatter, not path
+  'docs':                       'file',
 };
 
 export function inferContentType(path: string): ContentType {
@@ -353,6 +370,8 @@ export function inferContentType(path: string): ContentType {
   return 'file';
 }
 ```
+
+> **Note:** Files in `docs/` require a `type` field in frontmatter. Files in `data/` have type inferred from path. The `drafts/` directory is gitignored and not synced.
 
 ### 3.6 Schemas
 
@@ -427,7 +446,8 @@ export const ProtocolSchema = ResourceSchema.extend({
 
 export const PlaybookSchema = ResourceSchema;
 
-export const QuestionSchema = ResourceSchema.extend({
+// Question type (standalone — not a resource)
+export const QuestionSchema = FileSchema.extend({
   status: z.enum(['open', 'exploring', 'resolved']).optional(),
   related: z.array(z.string()).optional(),
   proposedBy: z.array(z.string()).optional(),
@@ -453,31 +473,37 @@ export const PersonSchema = DataSchema.extend({
 });
 
 export const GroupSchema = DataSchema.extend({
-  aliases: z.array(z.string()).optional(),
+  slug: z.string().optional(),
   members: z.array(z.string()).optional(),
+  parent: z.string().optional(),
   homepage: z.string().url().optional(),
-  logo: z.string().optional(),
 });
 
 export const ProjectSchema = DataSchema.extend({
+  slug: z.string().optional(),
   status: z.enum(['active', 'completed', 'paused', 'archived']).optional(),
   lead: z.array(z.string()).optional(),
+  contributors: z.array(z.string()).optional(),
+  group: z.string().optional(),
+  repository: z.string().optional(),
   homepage: z.string().url().optional(),
+  startDate: z.coerce.date().optional(),
+  endDate: z.coerce.date().optional(),
 });
 
 export const PlaceSchema = DataSchema.extend({
-  coordinates: z.object({
-    lat: z.number(),
-    lng: z.number(),
-  }).optional(),
+  geo: z.string().optional(),
+  containedIn: z.string().optional(),
   region: z.string().optional(),
 });
 
 export const GatheringSchema = DataSchema.extend({
-  eventDate: z.coerce.date().optional(),
   location: z.string().optional(),
+  startDate: z.coerce.date().optional(),
+  endDate: z.coerce.date().optional(),
+  organizers: z.array(z.string()).optional(),
   attendees: z.array(z.string()).optional(),
-  homepage: z.string().url().optional(),
+  outcomes: z.array(z.string()).optional(),
 });
 ```
 
@@ -631,7 +657,7 @@ export function truncateForMetadata(content: string): string {
 | `RERANK_CACHE` | Rerank results | 1 hour |
 | `SYNC_STATE` | Sync metadata | None |
 
-> Phase 3 will add `ROLE_CACHE` and `ENS_CACHE` KV namespaces for Hats Protocol and ENS resolution caching.
+> Phase 3 adds porch-managed KV namespaces for role caching, identity mapping, and agreement tracking. See porch spec §Phase 2/3 Design for details.
 
 ---
 
@@ -960,16 +986,44 @@ export async function searchKnowledge(
 | **Resources** | Application | Read-only data clients inject as context |
 | **Prompts** | User | Workflow templates users explicitly invoke |
 
-### 7.2 Server Implementation
+### 7.2 Server Structure
 
-Phase 1 uses stateless `createMcpHandler`. MCP requests go directly to the handler, bypassing Hono:
+The knowledge server follows the standard porch server layout:
+
+```
+knowledge-server/
+├── src/
+│   ├── index.ts              # fetch handler (standard porch route split)
+│   ├── mcp/
+│   │   ├── server.ts         # createMcpServer(env) factory
+│   │   └── tools/
+│   │       ├── search.ts
+│   │       ├── lexicon.ts
+│   │       ├── browse.ts
+│   │       ├── retrieve.ts
+│   │       └── index.ts      # registerTools(server, env)
+│   ├── api/
+│   │   ├── app.ts            # Hono app
+│   │   └── routes/v1/
+│   └── auth/
+│       ├── types.ts          # standard porch types
+│       ├── resolve.ts        # standard resolveAuthContext()
+│       └── check.ts          # standard checkTierAccess()
+├── wrangler.jsonc
+├── package.json
+└── tsconfig.json
+```
+
+### 7.3 Server Factory
+
+Per-request `McpServer` instantiation is a security requirement (MCP SDK ≥1.26.0, CVE GHSA-qgp8-v765-qxx9). Sharing `McpServer` instances across requests leaks response data between clients.
 
 ```typescript
 // src/mcp/server.ts
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { createMcpHandler } from "agents/mcp";
+import { registerTools } from './tools/index.js';
 
-export function createKnowledgeServer(env: Env) {
+export function createMcpServer(env: Env): McpServer {
   const server = new McpServer({
     name: "superbenefit-knowledge",
     version: "1.0.0",
@@ -981,60 +1035,52 @@ export function createKnowledgeServer(env: Env) {
 
   return server;
 }
-
-export const McpHandler = {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const server = createKnowledgeServer(env);
-    const handler = createMcpHandler(server, {
-      route: '/mcp',
-      corsOptions: { origin: '*' },
-      // Phase 2: authContext injected here from Access JWT
-    });
-    return handler(request, env, ctx);
-  },
-};
 ```
 
-### 7.3 Router Integration
+### 7.4 Fetch Handler
+
+Standard porch fetch handler pattern with MCP/REST route split:
 
 ```typescript
 // src/index.ts
-import { Hono } from 'hono';
-import { api } from './api/routes';
-import { McpHandler } from './mcp';
-import { handleVectorizeQueue } from './consumers/vectorize';
+import { createMcpHandler } from 'agents/mcp';
+import { createMcpServer } from './mcp/server.js';
+import { honoApp } from './api/app.js';
+import { handleVectorizeQueue } from './consumers/vectorize.js';
 
-export { KnowledgeSyncWorkflow } from './sync/workflow';
-
-const app = new Hono<{ Bindings: Env }>();
-
-// Public REST API
-app.route('/api/v1', api);
+export { KnowledgeSyncWorkflow } from './sync/workflow.js';
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
-    
-    // MCP server — direct to handler, bypassing Hono
+
+    // MCP requests → createMcpHandler (bypasses Hono)
     if (url.pathname === '/mcp' || url.pathname.startsWith('/mcp/')) {
-      return McpHandler.fetch(request, env, ctx);
+      // Phase 2: parse CF-Access-JWT-Assertion → build authContext here
+      const server = createMcpServer(env);
+      const handler = createMcpHandler(server, {
+        route: '/mcp',
+        corsOptions: { origin: '*' },
+        // Phase 2: authContext: { props: claims },
+      });
+      return handler(request, env, ctx);
     }
-    
+
     // GitHub webhook
     if (url.pathname === '/webhook' && request.method === 'POST') {
       return handleWebhook(request, env);
     }
-    
+
     // Everything else through Hono (REST API, health checks)
-    return app.fetch(request, env, ctx);
+    return honoApp.fetch(request, env, ctx);
   },
   queue: handleVectorizeQueue,
 };
 ```
 
-### 7.4 Tools
+### 7.5 Tools
 
-**Access control pattern (porch framework):**
+**Access control pattern (standard porch):**
 
 ```typescript
 // Every tool uses this pattern
@@ -1198,7 +1244,7 @@ function registerTools(server: McpServer, env: Env) {
 }
 ```
 
-### 7.5 Resources
+### 7.6 Resources
 
 ```typescript
 function registerResources(server: McpServer, env: Env) {
@@ -1274,7 +1320,7 @@ function registerResources(server: McpServer, env: Env) {
 }
 ```
 
-### 7.6 Prompts
+### 7.7 Prompts
 
 ```typescript
 function registerPrompts(server: McpServer, env: Env) {
@@ -1295,7 +1341,7 @@ function registerPrompts(server: McpServer, env: Env) {
 ${depth === "deep" ? `
 Provide a comprehensive analysis including:
 1. Core concepts and definitions from the lexicon
-2. Related patterns and practices from artifacts
+2. Related patterns and practices from the knowledge base
 3. External resources from the library
 4. Cross-references to other relevant topics
 5. Gaps or areas needing more documentation
@@ -1367,7 +1413,7 @@ Use the search_knowledge tool to find relevant documentation for both.`
 }
 ```
 
-### 7.7 Tool Inventory Summary
+### 7.8 Tool Inventory Summary
 
 | Tool | Description | Phase 1 Tier | Target Tier |
 |------|-------------|--------------|-------------|
@@ -1383,7 +1429,7 @@ Use the search_knowledge tool to find relevant documentation for both.`
 
 > Write tools (`save_link`, `create_draft`) deferred to Phase 2 when stateful agents with `needsApproval` are available.
 
-### 7.8 Client Compatibility
+### 7.9 Client Compatibility
 
 | Client | Transport | Auth | Resources | Prompts |
 |--------|-----------|------|-----------|---------|
@@ -1501,7 +1547,7 @@ Auto-generated from route definitions.
 
 **Architecture:** `AIChatAgent` (Durable Object) + AI SDK `tool()` function
 
-**Access:** Public tier via Cloudflare Access for SaaS (see §2.5)
+**Access:** Public tier via Cloudflare Access for SaaS (porch Phase 2)
 
 ```typescript
 import { AIChatAgent } from "agents/ai-chat-agent";
@@ -1553,7 +1599,7 @@ export class KnowledgeChatAgent extends AIChatAgent<Env> {
 
 **Architecture:** `Agent` as MCP Client connecting to partner DAOs
 
-**Access:** Members tier via Hats Protocol / token gating
+**Access:** Members tier (porch Phase 3)
 
 ```typescript
 import { Agent } from "agents";
@@ -1562,7 +1608,7 @@ import { streamText } from "ai";
 export class CommonsAgent extends Agent<Env> {
   
   partnerServers = [
-    { name: "SuperBenefit", url: "https://porch.superbenefit.dev/mcp" },
+    { name: "SuperBenefit", url: "https://mcporch.superbenefit.dev/mcp" },
     { name: "DAO Primitives", url: "https://mcp.daoprim.xyz/mcp" },
     { name: "Commons Stack", url: "https://mcp.commonsstack.org/mcp" },
   ];
@@ -1796,6 +1842,7 @@ interface Env {
 {
   "dependencies": {
     "@hono/zod-openapi": "^1.2.0",
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "agents": "^0.3.6",
     "hono": "^4.11.7",
     "yaml": "^2.8.2",
@@ -1809,7 +1856,7 @@ interface Env {
 }
 ```
 
-> Phase 3 will add `@hatsprotocol/sdk-v1-core` and `viem` for Hats Protocol and SIWE verification.
+> `@modelcontextprotocol/sdk` must be ≥1.26.0 for per-request safety (CVE GHSA-qgp8-v765-qxx9).
 
 ---
 
@@ -1817,6 +1864,9 @@ interface Env {
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 0.16 | 2026-02-07 | Ontology schema reconciliation (GroupSchema, ProjectSchema, PlaceSchema, GatheringSchema aligned with ontology fields); Hats Protocol details abstracted to porch spec (§2.2 AuthContext, §2.1 tier table, §1.7 phase table, §9.2, Appendix D); "MCPorch ecosystem" terminology replaced with neutral phrasing; §2.6 WaaP section condensed to porch reference; §4.5 Phase 3 KV note simplified (no namespace enumeration); prompt template "artifacts" → "knowledge base"; stray backtick fixed at §3.5/3.6 boundary; porch spec alignment updated to v0.19 |
+| 0.15 | 2026-02-07 | Ontology filesystem restructure: two-space model (docs/ for group-organized creative outputs, data/ for type-sorted structured records); notes/ renamed to docs/; artifacts/ eliminated (release mechanism replaced by Official Release pattern with index.base); tags/ → data/concepts/; links/ → data/links/; resources nested under data/resources/; stories nested under data/stories/; question promoted to standalone type (no longer resource sub-type); QuestionSchema extends FileSchema instead of ResourceSchema; PATH_TYPE_MAP updated for new paths; docs/ files require frontmatter type field |
+| 0.14 | 2026-02-07 | Porch v0.18 alignment: title → "Knowledge Server Specification"; AuthContext restored to full porch shape (address, roles, HatsRole); auth files → src/auth/ (standard porch layout); McpHandler wrapper eliminated (factory + handler inline in fetch); MCP SDK ≥1.26.0 CVE documented; server structure diagram aligned with porch standard; reference implementation URLs aligned; Phase 2/3 scoped as porch-ecosystem-wide; Phase 3 KV note clarified as ecosystem-wide; naming aligned (MCPorch Portal, "MCP server" not "porch server"); design principles updated |
 | 0.13 | 2026-02-06 | Dormant code removal: deleted hats.ts, ens.ts, siwe-handler.ts; removed ROLE_CACHE/ENS_CACHE KV bindings; removed viem, @hatsprotocol/sdk-v1-core, workers-oauth-provider, octokit, just-pick dependencies; simplified AuthContext (dropped HatsRole, HATS_CONFIG, address/roles fields); removed porch-spec.md external reference (content absorbed into §2); updated dependency versions to match actual package.json |
 | 0.12 | 2026-02-06 | Porch framework: replaced OAuthProvider with authContext injection, new tier model (open/public/members), routing split (MCP direct, REST through Hono), removed OAUTH_KV/NONCE_KV, validated against Feb 2026 Cloudflare docs |
 | 0.11 | 2026-02-01 | MCP primitives: stateless createMcpHandler pattern, Resources section, Prompts section, permission wrapper pattern, client compatibility matrix, Phase 2/3 architecture, updated dependencies |

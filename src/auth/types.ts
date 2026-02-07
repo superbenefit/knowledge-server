@@ -40,15 +40,24 @@ export const IdentitySchema = z
   })
   .openapi('Identity');
 
+// Porch roles mapping (Phase 3: Hats Protocol roles)
+export type PorchRoles = {
+  [key: string]: unknown;
+} | null;
+
 // Resolved access context for a request
 export interface AuthContext {
   identity: Identity | null;
   tier: AccessTier;
+  address: `0x${string}` | null;
+  roles: PorchRoles | null;
 }
 
 export const AuthContextSchema = z
   .object({
     identity: IdentitySchema.nullable(),
     tier: AccessTierSchema,
+    address: z.string().nullable(),
+    roles: z.unknown().nullable(),
   })
   .openapi('AuthContext');

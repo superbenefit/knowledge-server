@@ -11,8 +11,9 @@
  */
 
 import { Hono } from 'hono';
+import { createMcpHandler } from 'agents/mcp';
 import { api } from './api/routes';
-import { McpHandler } from './mcp';
+import { createMcpServer } from './mcp/server';
 import { handleVectorizeQueue } from './consumers/vectorize';
 import { verifyWebhookSignature, isExcluded } from './sync/github';
 import type { GitHubPushEvent } from './types/sync';
@@ -90,7 +91,16 @@ export default {
 
     // MCP server — direct to handler, bypassing Hono
     if (url.pathname === '/mcp' || url.pathname.startsWith('/mcp/')) {
-      return McpHandler.fetch(request, env, ctx);
+      const server = createMcpServer(env);
+      const handler = createMcpHandler(server, {
+        route: '/mcp',
+        corsOptions: {
+          origin: '*',
+          methods: 'GET, POST, DELETE, OPTIONS',
+          headers: 'Content-Type, Authorization, Mcp-Session-Id',
+        },
+      });
+      return handler(request, env, ctx);
     }
 
     // GitHub webhook
