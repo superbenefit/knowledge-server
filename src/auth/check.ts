@@ -5,8 +5,8 @@
  * The tool never needs to know how tiers are resolved.
  */
 
-import type { AccessTier, AuthContext } from '../types/auth';
-import { TIER_LEVEL } from '../types/auth';
+import type { AccessTier, AuthContext } from './types';
+import { TIER_LEVEL } from './types';
 
 type TierAccessResult =
   | { allowed: true; authContext: AuthContext }

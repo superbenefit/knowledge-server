@@ -54,12 +54,12 @@ Always search before answering questions about SuperBenefit's work.`;
 // ---------------------------------------------------------------------------
 
 const ONTOLOGY_SCHEMA = {
-  version: '0.11',
+  version: '0.16',
   contentTypes: ContentTypeSchema.options,
   hierarchy: {
     file: {
       description: 'Base type for all content',
-      children: ['reference', 'resource', 'story', 'data'],
+      children: ['reference', 'resource', 'question', 'story', 'data'],
     },
     reference: {
       description: 'Reference materials',
@@ -68,6 +68,10 @@ const ONTOLOGY_SCHEMA = {
     resource: {
       description: 'Reusable knowledge artifacts',
       children: RESOURCE_TYPES,
+    },
+    question: {
+      description: 'Open research questions (standalone)',
+      children: [],
     },
     story: {
       description: 'Narrative content',

@@ -20,7 +20,7 @@ export type ContentType = z.infer<typeof ContentTypeSchema>;
 
 // Parent type groupings (spec section 3.4)
 export const RESOURCE_TYPES: ContentType[] = [
-  'pattern', 'practice', 'primitive', 'protocol', 'playbook', 'question',
+  'pattern', 'practice', 'primitive', 'protocol', 'playbook',
 ];
 export const STORY_TYPES: ContentType[] = ['study', 'article'];
 export const REFERENCE_TYPES: ContentType[] = ['index', 'link', 'tag'];
@@ -30,27 +30,24 @@ export const DATA_TYPES: ContentType[] = [
 
 // Path prefix → content type mapping (spec section 3.5)
 export const PATH_TYPE_MAP: Record<string, ContentType> = {
-  // Resources
-  'artifacts/patterns': 'pattern',
-  'artifacts/practices': 'practice',
-  'artifacts/primitives': 'primitive',
-  'artifacts/protocols': 'protocol',
-  'artifacts/playbooks': 'playbook',
-  'artifacts/questions': 'question',
-  'artifacts/studies': 'study',
-  'artifacts/articles': 'article',
-  // Data
-  'data/people': 'person',
-  'data/groups': 'group',
-  'data/projects': 'project',
-  'data/places': 'place',
-  'data/gatherings': 'gathering',
-  // Reference
-  'links': 'link',
-  'tags': 'tag',
-  // File
-  'notes': 'file',
-  'drafts': 'file',
+  // Data — type-sorted
+  'data/concepts':              'tag',
+  'data/links':                 'link',
+  'data/resources/patterns':    'pattern',
+  'data/resources/practices':   'practice',
+  'data/resources/primitives':  'primitive',
+  'data/resources/protocols':   'protocol',
+  'data/resources/playbooks':   'playbook',
+  'data/stories/studies':       'study',
+  'data/stories/articles':      'article',
+  'data/questions':             'question',
+  'data/people':                'person',
+  'data/groups':                'group',
+  'data/projects':              'project',
+  'data/places':                'place',
+  'data/gatherings':            'gathering',
+  // Docs — type from frontmatter, not path
+  'docs':                       'file',
 };
 
 export function inferContentType(path: string): ContentType {
@@ -154,7 +151,8 @@ export type ProtocolFrontmatter = z.infer<typeof ProtocolSchema>;
 
 export const PlaybookSchema = ResourceSchema;
 
-export const QuestionSchema = ResourceSchema.extend({
+// Question type (standalone — not a resource)
+export const QuestionSchema = FileSchema.extend({
   status: z.enum(['open', 'exploring', 'resolved']).optional(),
   related: z.array(z.string()).optional(),
   proposedBy: z.array(z.string()).optional(),
@@ -192,37 +190,43 @@ export const PersonSchema = DataSchema.extend({
 export type PersonFrontmatter = z.infer<typeof PersonSchema>;
 
 export const GroupSchema = DataSchema.extend({
-  aliases: z.array(z.string()).optional(),
+  slug: z.string().optional(),
   members: z.array(z.string()).optional(),
+  parent: z.string().optional(),
   homepage: z.string().url().optional(),
-  logo: z.string().optional(),
 }).openapi('GroupFrontmatter');
 
 export type GroupFrontmatter = z.infer<typeof GroupSchema>;
 
 export const ProjectSchema = DataSchema.extend({
+  slug: z.string().optional(),
   status: z.enum(['active', 'completed', 'paused', 'archived']).optional(),
   lead: z.array(z.string()).optional(),
+  contributors: z.array(z.string()).optional(),
+  group: z.string().optional(),
+  repository: z.string().optional(),
   homepage: z.string().url().optional(),
+  startDate: z.coerce.date().optional(),
+  endDate: z.coerce.date().optional(),
 }).openapi('ProjectFrontmatter');
 
 export type ProjectFrontmatter = z.infer<typeof ProjectSchema>;
 
 export const PlaceSchema = DataSchema.extend({
-  coordinates: z.object({
-    lat: z.number(),
-    lng: z.number(),
-  }).optional(),
+  geo: z.string().optional(),
+  containedIn: z.string().optional(),
   region: z.string().optional(),
 }).openapi('PlaceFrontmatter');
 
 export type PlaceFrontmatter = z.infer<typeof PlaceSchema>;
 
 export const GatheringSchema = DataSchema.extend({
-  eventDate: z.coerce.date().optional(),
   location: z.string().optional(),
+  startDate: z.coerce.date().optional(),
+  endDate: z.coerce.date().optional(),
+  organizers: z.array(z.string()).optional(),
   attendees: z.array(z.string()).optional(),
-  homepage: z.string().url().optional(),
+  outcomes: z.array(z.string()).optional(),
 }).openapi('GatheringFrontmatter');
 
 export type GatheringFrontmatter = z.infer<typeof GatheringSchema>;

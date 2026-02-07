@@ -8,12 +8,12 @@
  * See spec.md §2 for the full access control design.
  */
 
-import type { AuthContext } from '../types/auth';
+import type { AuthContext } from './types';
 
 /**
  * Resolve access context from the current request.
  * Phase 1: Always returns open tier — no authentication.
  */
 export async function resolveAuthContext(_env: Env): Promise<AuthContext> {
-  return { identity: null, tier: 'open' };
+  return { identity: null, tier: 'open', address: null, roles: null };
 }
