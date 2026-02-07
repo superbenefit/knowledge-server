@@ -1,6 +1,6 @@
 # MCP
 
-> Implements the Model Context Protocol server with 10 tools, 4 resources, and 3 prompts for AI-assisted knowledge base access.
+> Implements the Model Context Protocol server with 9 tools, 4 resources, and 3 prompts for AI-assisted knowledge base access.
 
 **Source:** `src/mcp/`
 **Files:** 5 (`index.ts`, `server.ts`, `tools.ts`, `resources.ts`, `prompts.ts`)
@@ -93,7 +93,7 @@ graph TD
 
 ### `tools.ts`
 
-**Purpose:** Registers all 10 MCP tools with the porch access control guard pattern.
+**Purpose:** Registers all 9 MCP tools with the porch access control guard pattern.
 
 #### Exports
 
@@ -184,7 +184,7 @@ if (!access.allowed) {
 - Guidance on citing sources and distinguishing documented practices from general knowledge
 
 **Ontology schema** includes:
-- Version (`0.11`)
+- Version (`0.16`)
 - Content type list (from `ContentTypeSchema.options`)
 - Hierarchy tree (file → reference/resource/story/data → concrete types)
 - Metadata field documentation (required, optional, indexed)

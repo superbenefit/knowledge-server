@@ -4,7 +4,7 @@
 
 **Source:** `src/api/`
 **Files:** 2 (`routes.ts`, `schemas.ts`)
-**Spec reference:** `docs/spec.md` sections 8, 10
+**Spec reference:** `docs/spec.md` sections 8, 10 (v0.16)
 **Depends on:** `types` (`ContentTypeSchema`, `ListParamsSchema`, `SearchParamsSchema`, response schemas), `retrieval` (`searchKnowledge`), `types/storage` (`toR2Key`, `R2Document`)
 **Depended on by:** `index` (mounted at `/api/v1` via Hono routing)
 
@@ -266,4 +266,4 @@ curl -I -X OPTIONS http://localhost:8788/api/v1/entries \
 - [types](../types/) — `ListParams`, `SearchParams`, `SearchResult`, `R2Document`, `ErrorResponse`
 - [retrieval](../retrieval/) — `searchKnowledge()` pipeline used by the search route
 - [index](../) — Where the API is mounted at `/api/v1`
-- `docs/spec.md` sections 8, 10 — REST API and error handling specification
+- `docs/spec.md` sections 8, 10 (v0.16) — REST API and error handling specification

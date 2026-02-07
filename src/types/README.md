@@ -3,7 +3,7 @@
 > Defines the entire type system: 20-type content ontology, auth model, API shapes, storage schemas, and sync payloads.
 
 **Source:** `src/types/`
-**Files:** 6 (`index.ts`, `content.ts`, `auth.ts`, `api.ts`, `storage.ts`, `sync.ts`)
+**Files:** 5 (`index.ts`, `content.ts`, `api.ts`, `storage.ts`, `sync.ts`) + auth types re-exported from `src/auth/types.ts`
 **Spec reference:** `docs/spec.md` sections 2, 3, 4, 5, 6, 8
 **Depends on:** none (leaf module)
 **Depended on by:** `auth`, `retrieval`, `consumers`, `sync`, `mcp`, `api`, `index`
@@ -24,7 +24,7 @@ All schemas use `@hono/zod-openapi`'s `.openapi()` extension to attach OpenAPI m
 graph LR
     subgraph "Type System"
         content["content.ts<br/>20 content types"]
-        auth["auth.ts<br/>Access tiers"]
+        authtypes["../auth/types.ts<br/>Access tiers"]
         storage["storage.ts<br/>R2 + Vectorize shapes"]
         api["api.ts<br/>API request/response"]
         sync["sync.ts<br/>Sync payloads"]
@@ -34,7 +34,7 @@ graph LR
     content --> storage
     content --> api
     storage --> api
-    auth --> idx
+    authtypes --> idx
     content --> idx
     api --> idx
     storage --> idx
@@ -66,7 +66,7 @@ All exports are re-exports. Organized into sections by spec reference:
 | Sync (spec 5) | `SyncParamsSchema` | `SyncParams`, `R2EventNotification`, `GitHubPushEvent`, `ParsedMarkdown` | |
 
 #### Dependencies
-- **Internal:** `./content`, `./auth`, `./api`, `./storage`, `./sync`
+- **Internal:** `./content`, `../auth/types`, `./api`, `./storage`, `./sync`
 - **External:** none
 
 ---
@@ -81,11 +81,11 @@ All exports are re-exports. Organized into sections by spec reference:
 |--------|------|-------------|
 | `ContentTypeSchema` | Zod enum | All 20 content type literals |
 | `ContentType` | Type | Inferred union type |
-| `RESOURCE_TYPES` | Constant | `['pattern', 'practice', 'primitive', 'protocol', 'playbook', 'question']` |
+| `RESOURCE_TYPES` | Constant | `['pattern', 'practice', 'primitive', 'protocol', 'playbook']` |
 | `STORY_TYPES` | Constant | `['study', 'article']` |
 | `REFERENCE_TYPES` | Constant | `['index', 'link', 'tag']` |
 | `DATA_TYPES` | Constant | `['person', 'group', 'project', 'place', 'gathering']` |
-| `PATH_TYPE_MAP` | Record | Maps 17 path prefixes to content types |
+| `PATH_TYPE_MAP` | Record | Maps 16 path prefixes to content types |
 | `inferContentType()` | Function | `(path: string) => ContentType` — falls back to `'file'` |
 | `FileSchema` | Zod object | Base schema with `title`, `date`, `publish`, `draft`, etc. |
 | `ResourceSchema` | Zod object | Extends `FileSchema` with `release`, `hasPart`, `isPartOf` |
@@ -99,14 +99,14 @@ All exports are re-exports. Organized into sections by spec reference:
 | `PrimitiveSchema` | Zod object | Extends `ResourceSchema` with `category` |
 | `ProtocolSchema` | Zod object | Extends `ResourceSchema` with `steps` |
 | `PlaybookSchema` | Zod object | Alias for `ResourceSchema` |
-| `QuestionSchema` | Zod object | Extends `ResourceSchema` with `status` (`open`/`exploring`/`resolved`), `related`, `proposedBy` |
+| `QuestionSchema` | Zod object | Extends `FileSchema` with `status` (`open`/`exploring`/`resolved`), `related`, `proposedBy` |
 | `StudySchema` | Zod object | Alias for `StorySchema` |
 | `ArticleSchema` | Zod object | Extends `StorySchema` with `url`, `curator`, `harvester` |
 | `PersonSchema` | Zod object | Extends `DataSchema` with `aliases`, `roles`, `groups`, `homepage`, `email`, `image` |
-| `GroupSchema` | Zod object | Extends `DataSchema` with `aliases`, `members`, `homepage`, `logo` |
-| `ProjectSchema` | Zod object | Extends `DataSchema` with `status` (`active`/`completed`/`paused`/`archived`), `lead`, `homepage` |
-| `PlaceSchema` | Zod object | Extends `DataSchema` with `coordinates` (`{lat, lng}`), `region` |
-| `GatheringSchema` | Zod object | Extends `DataSchema` with `eventDate`, `location`, `attendees`, `homepage` |
+| `GroupSchema` | Zod object | Extends `DataSchema` with `slug`, `members`, `parent`, `homepage` |
+| `ProjectSchema` | Zod object | Extends `DataSchema` with `slug`, `status` (`active`/`completed`/`paused`/`archived`), `lead`, `contributors`, `group`, `repository`, `homepage`, `startDate`, `endDate` |
+| `PlaceSchema` | Zod object | Extends `DataSchema` with `geo`, `containedIn`, `region` |
+| `GatheringSchema` | Zod object | Extends `DataSchema` with `location`, `startDate`, `endDate`, `organizers`, `attendees`, `outcomes` |
 | `ContentSchema` | Discriminated union | Union of 16 concrete types, discriminated on `type` field |
 
 #### Internal Logic
@@ -128,7 +128,8 @@ graph TD
     ResourceSchema --> PrimitiveSchema["PrimitiveSchema (+category)"]
     ResourceSchema --> ProtocolSchema["ProtocolSchema (+steps)"]
     ResourceSchema --> PlaybookSchema
-    ResourceSchema --> QuestionSchema["QuestionSchema (+status, related)"]
+
+    FileSchema --> QuestionSchema["QuestionSchema (+status, related)"]
 
     StorySchema --> StudySchema
     StorySchema --> ArticleSchema["ArticleSchema (+url, curator)"]
@@ -152,10 +153,11 @@ graph TD
 - `group` — optional string
 
 **`PATH_TYPE_MAP`** maps repository directory prefixes to content types. Used by `inferContentType()` when frontmatter doesn't specify a `type` field. The mapping covers:
-- `artifacts/patterns` → `pattern`, `artifacts/practices` → `practice`, etc.
-- `data/people` → `person`, `data/groups` → `group`, etc.
-- `links` → `link`, `tags` → `tag`
-- `notes` / `drafts` → `file` (catch-all)
+- `data/resources/*` → resource types (pattern, practice, primitive, protocol, playbook)
+- `data/stories/*` → story types (study, article)
+- `data/concepts` → `tag`, `data/links` → `link`, `data/questions` → `question`
+- `data/people` → `person`, `data/groups` → `group`, `data/projects` → `project`, etc.
+- `docs` → `file` (type from frontmatter, not path)
 
 **`ContentSchema` discriminated union** includes 16 of the 20 types (excludes parent types `reference`, `resource`, `story`, `data` and the root `index` type as they are not standalone document types in the union).
 
@@ -164,7 +166,7 @@ graph TD
 
 ---
 
-### `auth.ts`
+### Auth types (re-exported from `src/auth/types.ts`)
 
 **Purpose:** Defines the three-tier access control model for the porch framework.
 
@@ -177,8 +179,9 @@ graph TD
 | `TIER_LEVEL` | Record | Numeric ordering: `{ open: 0, public: 1, members: 2 }` |
 | `Identity` | Interface | `{ userId, name, email, provider }` |
 | `IdentitySchema` | Zod object | Schema for Identity |
-| `AuthContext` | Interface | `{ identity: Identity \| null, tier: AccessTier }` |
+| `AuthContext` | Interface | `{ identity, tier, address, roles }` |
 | `AuthContextSchema` | Zod object | Schema for AuthContext |
+| `PorchRoles` | Type | Phase 3 Hats Protocol roles mapping |
 
 #### Internal Logic
 
