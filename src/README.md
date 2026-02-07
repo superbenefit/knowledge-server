@@ -28,7 +28,7 @@ graph TD
     Fetch -->|"POST /webhook"| WH["handleWebhook()<br/>Direct — bypasses Hono"]
     Fetch -->|everything else| Hono["Hono Router"]
 
-    Hono -->|"/api/v1/*"| API["api routes<br/>(see api.md)"]
+    Hono -->|"/api/v1/*"| API["api routes<br/>(see api/)"]
     Hono -->|unmatched| 404["Hono 404"]
 
     WH --> Verify["verifyWebhookSignature()"]
@@ -202,10 +202,10 @@ All bindings are used by this module or the modules it delegates to. See the Com
 
 ## Cross-References
 
-- [api.md](api.md) — REST API mounted at `/api/v1`
-- [mcp.md](mcp.md) — MCP server at `/mcp`
-- [sync.md](sync.md) — `KnowledgeSyncWorkflow`, `verifyWebhookSignature()`, `isExcluded()`
-- [consumers.md](consumers.md) — `handleVectorizeQueue()` wired to the `queue` export
-- [types.md](types.md) — `GitHubPushEvent`, `Env` interface
+- [api](api/) — REST API mounted at `/api/v1`
+- [mcp](mcp/) — MCP server at `/mcp`
+- [sync](sync/) — `KnowledgeSyncWorkflow`, `verifyWebhookSignature()`, `isExcluded()`
+- [consumers](consumers/) — `handleVectorizeQueue()` wired to the `queue` export
+- [types](types/) — `GitHubPushEvent`, `Env` interface
 - `CLAUDE.md` — Router integration pattern
 - `docs/spec.md` sections 1, 5.1, 8, 9 — Architecture, webhook handling, REST API, worker configuration

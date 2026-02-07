@@ -186,7 +186,7 @@ Response schemas are re-exported unchanged — they already have `.openapi()` an
 | `SearchResult` | `types/api.ts` | Search result shape |
 | `ContentType` | `types/content.ts` | Valid content type for path/query params |
 
-See [types.md](types.md) for full definitions.
+See [types](../types/) for full definitions.
 
 ## Cloudflare Bindings Used
 
@@ -263,7 +263,7 @@ curl -I -X OPTIONS http://localhost:8788/api/v1/entries \
 
 ## Cross-References
 
-- [types.md](types.md) — `ListParams`, `SearchParams`, `SearchResult`, `R2Document`, `ErrorResponse`
-- [retrieval.md](retrieval.md) — `searchKnowledge()` pipeline used by the search route
-- [index.md](index.md) — Where the API is mounted at `/api/v1`
+- [types](../types/) — `ListParams`, `SearchParams`, `SearchResult`, `R2Document`, `ErrorResponse`
+- [retrieval](../retrieval/) — `searchKnowledge()` pipeline used by the search route
+- [index](../) — Where the API is mounted at `/api/v1`
 - `docs/spec.md` sections 8, 10 — REST API and error handling specification

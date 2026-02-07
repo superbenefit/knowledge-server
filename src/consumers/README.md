@@ -14,7 +14,7 @@
 
 The consumers directory contains a single queue consumer that bridges R2 storage and Vectorize search. When the sync workflow writes or deletes a document in R2, the R2 bucket emits an event notification to a Cloudflare Queue. This consumer processes those events, generating embeddings for new/updated documents and removing vectors for deleted ones.
 
-This is the write-side counterpart to the [retrieval module](retrieval.md)'s read-side search pipeline. Together they form a complete index: sync writes to R2, R2 events trigger this consumer, the consumer writes to Vectorize, and the retrieval module reads from Vectorize.
+This is the write-side counterpart to the [retrieval module](../retrieval/)'s read-side search pipeline. Together they form a complete index: sync writes to R2, R2 events trigger this consumer, the consumer writes to Vectorize, and the retrieval module reads from Vectorize.
 
 The consumer is designed for idempotency — upserting the same document ID overwrites the previous vector, and deleting a non-existent ID is a no-op. This is critical because R2 event notifications have no ordering guarantee.
 
@@ -125,7 +125,7 @@ The `ConsumerDeps` interface abstracts bindings for testability. `updateVectoriz
 | `R2EventNotification` | `vectorize.ts` (local) | R2 bucket event payload |
 | `ConsumerDeps` | `vectorize.ts` (local) | Binding interface for dependency injection |
 
-See [types.md](types.md) for full schema definitions.
+See [types](../types/) for full schema definitions.
 
 ## Cloudflare Bindings Used
 
@@ -176,8 +176,8 @@ Failed to process queue message {msg.id}: {error.message}
 
 ## Cross-References
 
-- [types.md](types.md) — `R2Document`, `VectorizeMetadata` schemas
-- [retrieval.md](retrieval.md) — The read-side counterpart that queries the Vectorize index
-- [sync.md](sync.md) — The workflow that writes to R2, triggering the events this consumer processes
-- [index.md](index.md) — Where `handleVectorizeQueue` is wired to the worker's `queue` export
+- [types](../types/) — `R2Document`, `VectorizeMetadata` schemas
+- [retrieval](../retrieval/) — The read-side counterpart that queries the Vectorize index
+- [sync](../sync/) — The workflow that writes to R2, triggering the events this consumer processes
+- [index](../) — Where `handleVectorizeQueue` is wired to the worker's `queue` export
 - `docs/spec.md` sections 4.3-4.4, 5.3 — Vectorize indexing and event processing specification

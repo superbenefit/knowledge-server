@@ -210,7 +210,7 @@ The `options` parameter currently only supports `includeDocuments?: boolean`. Wh
 | `VectorizeMetadata` | `types/storage.ts` | Metadata on vectors, includes `content` snippet for reranking |
 | `VectorizeMatch` | Cloudflare types | Vectorize query result with `id`, `score`, `metadata` |
 
-See [types.md](types.md) for full definitions.
+See [types](../types/) for full definitions.
 
 ## Cloudflare Bindings Used
 
@@ -263,8 +263,8 @@ Errors are not caught within the retrieval module — they propagate to the call
 
 ## Cross-References
 
-- [types.md](types.md) — `SearchResult`, `RerankResult`, `VectorizeMetadata` schemas
-- [consumers.md](consumers.md) — How documents get indexed into Vectorize (the write side of this read pipeline)
-- [mcp.md](mcp.md) — `search_knowledge` and `search_with_documents` tools that call `searchKnowledge()`
-- [api.md](api.md) — `GET /search` route that calls `searchKnowledge()`
+- [types](../types/) — `SearchResult`, `RerankResult`, `VectorizeMetadata` schemas
+- [consumers](../consumers/) — How documents get indexed into Vectorize (the write side of this read pipeline)
+- [mcp](../mcp/) — `search_knowledge` and `search_with_documents` tools that call `searchKnowledge()`
+- [api](../api/) — `GET /search` route that calls `searchKnowledge()`
 - `docs/spec.md` sections 6.1-6.3 — Full search pipeline specification

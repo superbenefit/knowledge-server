@@ -357,8 +357,8 @@ The `SearchFiltersSchema` is shared between REST API and MCP tools — both use 
 
 ## Cross-References
 
-- [auth.md](auth.md) — How `AccessTier` and `AuthContext` are used for access control
-- [retrieval.md](retrieval.md) — How `SearchFilters`, `SearchResult`, and `VectorizeMetadata` drive search
-- [consumers.md](consumers.md) — How `R2Document` is transformed into `VectorizeMetadata`
-- [sync.md](sync.md) — How `SyncParams` and `ParsedMarkdown` drive the sync pipeline
+- [auth](../auth/) — How `AccessTier` and `AuthContext` are used for access control
+- [retrieval](../retrieval/) — How `SearchFilters`, `SearchResult`, and `VectorizeMetadata` drive search
+- [consumers](../consumers/) — How `R2Document` is transformed into `VectorizeMetadata`
+- [sync](../sync/) — How `SyncParams` and `ParsedMarkdown` drive the sync pipeline
 - `docs/spec.md` sections 2-8 — Full specification for each type category

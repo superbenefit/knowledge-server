@@ -39,7 +39,7 @@ graph LR
 
     WF -->|deleted files| Del["R2.delete()<br/>inferContentType + generateId"]
 
-    Store -->|R2 event| Queue["Queue → Vectorize<br/>(see consumers.md)"]
+    Store -->|R2 event| Queue["Queue → Vectorize<br/>(see consumers/)"]
 ```
 
 ## File-by-File Reference
@@ -191,7 +191,7 @@ Fetches file content from the GitHub Contents API:
 | `GitHubPushEvent` | `types/sync.ts` | Subset of GitHub push webhook payload |
 | `ContentType` | `types/content.ts` | 20-type union |
 
-See [types.md](types.md) for full definitions.
+See [types](../types/) for full definitions.
 
 ## Cloudflare Bindings Used
 
@@ -248,7 +248,7 @@ See [types.md](types.md) for full definitions.
 
 ## Cross-References
 
-- [types.md](types.md) — `SyncParams`, `R2Document`, `ParsedMarkdown`, `ContentType` definitions
-- [consumers.md](consumers.md) — Queue consumer that processes R2 events after sync writes
-- [index.md](index.md) — `handleWebhook()` function and `KnowledgeSyncWorkflow` re-export
+- [types](../types/) — `SyncParams`, `R2Document`, `ParsedMarkdown`, `ContentType` definitions
+- [consumers](../consumers/) — Queue consumer that processes R2 events after sync writes
+- [index](../) — `handleWebhook()` function and `KnowledgeSyncWorkflow` re-export
 - `docs/spec.md` section 5 — Full sync pipeline specification
