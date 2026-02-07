@@ -288,9 +288,9 @@ All tools follow the same error pattern:
 
 ## Cross-References
 
-- [auth.md](auth.md) — Porch access control guard pattern
-- [retrieval.md](retrieval.md) — `searchKnowledge()` pipeline called by search tools
-- [types.md](types.md) — `ContentType`, `SearchFilters`, `R2Document` schemas
-- [index.md](index.md) — Routing `/mcp` to `McpHandler`
+- [auth](../auth/) — Porch access control guard pattern
+- [retrieval](../retrieval/) — `searchKnowledge()` pipeline called by search tools
+- [types](../types/) — `ContentType`, `SearchFilters`, `R2Document` schemas
+- [index](../) — Routing `/mcp` to `McpHandler`
 - `CLAUDE.md` — Guard boilerplate snippet
 - `docs/spec.md` sections 7.3-7.5 — Full MCP primitive specifications

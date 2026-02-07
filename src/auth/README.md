@@ -142,7 +142,7 @@ const userId = access.authContext.identity?.userId;
 | `TIER_LEVEL` | `types/auth.ts` | `{ open: 0, public: 1, members: 2 }` |
 | `TierAccessResult` | `check.ts` (local) | Discriminated union on `allowed` |
 
-See [types.md](types.md) for full type definitions.
+See [types](../types/) for full type definitions.
 
 ## Cloudflare Bindings Used
 
@@ -184,7 +184,7 @@ When access is denied, MCP tools return:
 
 ## Cross-References
 
-- [types.md](types.md) — `AccessTier`, `AuthContext`, `Identity` type definitions
-- [mcp.md](mcp.md) — How tools use the guard pattern with `resolveAuthContext()` + `checkTierAccess()`
+- [types](../types/) — `AccessTier`, `AuthContext`, `Identity` type definitions
+- [mcp](../mcp/) — How tools use the guard pattern with `resolveAuthContext()` + `checkTierAccess()`
 - `CLAUDE.md` — Guard boilerplate snippet
 - `docs/spec.md` section 2 — Full porch access control specification
