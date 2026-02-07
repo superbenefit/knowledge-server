@@ -3,9 +3,9 @@
 > Implements the porch access control framework — a three-tier authorization model that gates tool and resource access.
 
 **Source:** `src/auth/`
-**Files:** 3 (`index.ts`, `resolve.ts`, `check.ts`)
-**Spec reference:** `docs/spec.md` section 2
-**Depends on:** `types` (`types/auth.ts`)
+**Files:** 4 (`index.ts`, `resolve.ts`, `check.ts`, `types.ts`)
+**Spec reference:** `docs/spec.md` section 2 (v0.16)
+**Depends on:** (none - types are local to this module)
 **Depended on by:** `mcp` (every tool calls both functions)
 
 ---
@@ -44,7 +44,7 @@ sequenceDiagram
 
 ### `index.ts`
 
-**Purpose:** Barrel file re-exporting the two public functions.
+**Purpose:** Barrel file re-exporting the two public functions and types.
 
 #### Exports
 
@@ -52,6 +52,8 @@ sequenceDiagram
 |--------|------|--------|
 | `resolveAuthContext` | Function | `./resolve` |
 | `checkTierAccess` | Function | `./check` |
+| `AccessTier`, `Identity`, `AuthContext`, `PorchRoles` | Types | `./types` |
+| `AccessTierSchema`, `TIER_LEVEL`, `IdentitySchema`, `AuthContextSchema` | Values | `./types` |
 
 ---
 
@@ -67,7 +69,7 @@ sequenceDiagram
 
 #### Internal Logic
 
-**Phase 1 implementation:** Always returns `{ identity: null, tier: 'open' }`. The function is async and accepts `_env` (underscore-prefixed, unused) to maintain the interface contract for future phases.
+**Phase 1 implementation:** Always returns `{ identity: null, tier: 'open', address: null, roles: null }`. The function is async and accepts `_env` (underscore-prefixed, unused) to maintain the interface contract for future phases.
 
 **Phase 2 extension path:**
 1. Read the `CF-Access-Jwt-Assertion` header from the request
@@ -81,7 +83,7 @@ sequenceDiagram
 3. If the user wears the required hat, return `tier: 'members'`
 
 #### Dependencies
-- **Internal:** `../types/auth` (AuthContext type)
+- **Internal:** `./types` (AuthContext type)
 
 ---
 
@@ -128,7 +130,29 @@ const userId = access.authContext.identity?.userId;
 ```
 
 #### Dependencies
-- **Internal:** `../types/auth` (AccessTier, AuthContext, TIER_LEVEL)
+- **Internal:** `./types` (AccessTier, AuthContext, TIER_LEVEL)
+
+---
+
+### `types.ts`
+
+**Purpose:** Porch access control framework types shared across the auth module.
+
+#### Exports
+
+| Export | Kind | Description |
+|--------|------|-------------|
+| `AccessTier` | Type | `'open' \| 'public' \| 'members'` |
+| `AccessTierSchema` | Zod schema | Schema for AccessTier with `.openapi()` |
+| `TIER_LEVEL` | Const | `{ open: 0, public: 1, members: 2 }` |
+| `Identity` | Interface | `{ userId, name, email, provider }` |
+| `IdentitySchema` | Zod schema | Schema for Identity with `.openapi()` |
+| `PorchRoles` | Type | `{ [key: string]: unknown } \| null` (Phase 3: Hats Protocol roles) |
+| `AuthContext` | Interface | `{ identity, tier, address, roles }` |
+| `AuthContextSchema` | Zod schema | Schema for AuthContext with `.openapi()` |
+
+#### Dependencies
+- **External:** `@hono/zod-openapi`
 
 ---
 
@@ -136,13 +160,12 @@ const userId = access.authContext.identity?.userId;
 
 | Type | Defined In | Description |
 |------|-----------|-------------|
-| `AccessTier` | `types/auth.ts` | `'open' \| 'public' \| 'members'` |
-| `AuthContext` | `types/auth.ts` | `{ identity: Identity \| null, tier: AccessTier }` |
-| `Identity` | `types/auth.ts` | `{ userId, name, email, provider }` |
-| `TIER_LEVEL` | `types/auth.ts` | `{ open: 0, public: 1, members: 2 }` |
+| `AccessTier` | `types.ts` | `'open' \| 'public' \| 'members'` |
+| `AuthContext` | `types.ts` | `{ identity: Identity \| null, tier: AccessTier, address: \`0x\${string}\` \| null, roles: PorchRoles \| null }` |
+| `Identity` | `types.ts` | `{ userId, name, email, provider }` |
+| `PorchRoles` | `types.ts` | `{ [key: string]: unknown } \| null` |
+| `TIER_LEVEL` | `types.ts` | `{ open: 0, public: 1, members: 2 }` |
 | `TierAccessResult` | `check.ts` (local) | Discriminated union on `allowed` |
-
-See [types](../types/) for full type definitions.
 
 ## Cloudflare Bindings Used
 
@@ -167,7 +190,7 @@ When access is denied, MCP tools return:
 ## Extension Points
 
 **Adding a new access tier:**
-1. Add the tier to the `AccessTier` type and `AccessTierSchema` in `types/auth.ts`
+1. Add the tier to the `AccessTier` type and `AccessTierSchema` in `types.ts`
 2. Add its numeric level to `TIER_LEVEL` (higher = more privileged)
 3. Add resolution logic to `resolveAuthContext()` in `resolve.ts`
 4. No changes needed to `checkTierAccess()` — it works with any tier
@@ -184,7 +207,6 @@ When access is denied, MCP tools return:
 
 ## Cross-References
 
-- [types](../types/) — `AccessTier`, `AuthContext`, `Identity` type definitions
 - [mcp](../mcp/) — How tools use the guard pattern with `resolveAuthContext()` + `checkTierAccess()`
 - `CLAUDE.md` — Guard boilerplate snippet
-- `docs/spec.md` section 2 — Full porch access control specification
+- `docs/spec.md` section 2 (v0.16) — Full porch access control specification

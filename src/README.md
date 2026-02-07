@@ -5,7 +5,7 @@
 **Source:** `src/index.ts`, `src/env.d.ts`
 **Files:** 2
 **Spec reference:** `docs/spec.md` sections 1, 5.1, 8, 9
-**Depends on:** `api` (Hono app), `mcp` (McpHandler), `consumers` (handleVectorizeQueue), `sync` (verifyWebhookSignature, isExcluded, KnowledgeSyncWorkflow), `types` (GitHubPushEvent)
+**Depends on:** `api` (Hono app), `mcp` (createMcpServer), `consumers` (handleVectorizeQueue), `sync` (verifyWebhookSignature, isExcluded, KnowledgeSyncWorkflow), `types` (GitHubPushEvent)
 **Depended on by:** Cloudflare Workers runtime (worker entry point)
 
 ---
@@ -24,7 +24,7 @@ The file also contains the `handleWebhook()` function, which validates GitHub pu
 graph TD
     Request["Incoming Request"] --> Fetch["export default { fetch }"]
 
-    Fetch -->|"/mcp" or "/mcp/*"| MCP["McpHandler.fetch()<br/>Direct — bypasses Hono"]
+    Fetch -->|"/mcp" or "/mcp/*"| MCP["createMcpHandler()<br/>Direct — bypasses Hono"]
     Fetch -->|"POST /webhook"| WH["handleWebhook()<br/>Direct — bypasses Hono"]
     Fetch -->|everything else| Hono["Hono Router"]
 
@@ -60,12 +60,12 @@ graph TD
 
 ```
 Request URL pathname
-├── /mcp or /mcp/* → McpHandler.fetch(request, env, ctx)
+├── /mcp or /mcp/* → handler(request, env, ctx)  (from createMcpHandler)
 ├── POST /webhook  → handleWebhook(request, env)
 └── *              → app.fetch(request, env, ctx)  (Hono)
 ```
 
-1. **MCP path** (`/mcp` or `/mcp/*`): Delegates directly to `McpHandler.fetch()`, bypassing Hono. This is critical because MCP uses its own transport (SSE/Streamable HTTP) and CORS configuration.
+1. **MCP path** (`/mcp` or `/mcp/*`): Creates a new `McpServer` via `createMcpServer(env)` and wraps it with `createMcpHandler()`, bypassing Hono. This is critical because MCP uses its own transport (SSE/Streamable HTTP) and CORS configuration.
 
 2. **Webhook path** (`POST /webhook`): Delegates to `handleWebhook()` for GitHub push event processing.
 
@@ -102,7 +102,7 @@ The Hono app is minimal — it only mounts the API sub-application. All middlewa
 9. **Response:** `{ status: 'ok', changed: N, deleted: N }`
 
 #### Dependencies
-- **Internal:** `./api/routes` (api), `./mcp` (McpHandler), `./consumers/vectorize` (handleVectorizeQueue), `./sync/github` (verifyWebhookSignature, isExcluded), `./types/sync` (GitHubPushEvent), `./sync/workflow` (KnowledgeSyncWorkflow — re-export)
+- **Internal:** `./api/routes` (api), `./mcp/server` (createMcpServer), `./consumers/vectorize` (handleVectorizeQueue), `./sync/github` (verifyWebhookSignature, isExcluded), `./types/sync` (GitHubPushEvent), `./sync/workflow` (KnowledgeSyncWorkflow — re-export)
 - **External:** `hono` (Hono)
 
 ---
