@@ -1,6 +1,6 @@
 # SuperBenefit Knowledge Server
 
-MCP server + public REST API for SuperBenefit DAO's knowledge base.
+MCP server + public REST API for SuperBenefit's knowledge base.
 
 ## What It Does
 
