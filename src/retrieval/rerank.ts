@@ -1,4 +1,5 @@
-import type { RerankResult, VectorizeMetadata } from '../types';
+import type { RerankResult } from '../types';
+import { VectorizeMetadataSchema } from '../types/storage';
 
 /** Default top_k for the reranker model (spec section 6.3). */
 const RERANK_TOP_K = 5;
@@ -11,17 +12,19 @@ function sigmoid(x: number): number {
 }
 
 /**
- * Generate a simple hash string from query + match IDs for cache keying.
+ * Generate a cryptographically secure hash for cache keying.
+ * Uses SHA-256 truncated to 16 hex chars (64 bits of collision resistance).
  */
-export function hashQuery(query: string, ids: string[]): string {
+export async function hashQuery(query: string, ids: string[]): Promise<string> {
   const input = query + ':' + ids.sort().join(',');
-  let hash = 0;
-  for (let i = 0; i < input.length; i++) {
-    const char = input.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-  return hash.toString(16);
+  const buffer = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(input)
+  );
+  return Array.from(new Uint8Array(buffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
+    .slice(0, 16);
 }
 
 /**
@@ -47,7 +50,7 @@ export async function rerankResults(
   if (matches.length === 0) return [];
 
   // Check cache
-  const cacheKey = `rerank:${hashQuery(query, matches.map(m => m.id))}`;
+  const cacheKey = `rerank:${await hashQuery(query, matches.map(m => m.id))}`;
   const cached = await env.RERANK_CACHE.get<RerankResult[]>(cacheKey, 'json');
   if (cached) return cached;
 
@@ -76,11 +79,17 @@ export async function rerankResults(
     if (normalizedScore < 0.5) continue;
 
     const match = matches[r.id];
+    // Security: Validate metadata with Zod instead of unsafe cast
+    const metadataResult = VectorizeMetadataSchema.safeParse(match.metadata);
+    if (!metadataResult.success) {
+      console.error(`Invalid metadata for match ${match.id}: ${metadataResult.error.message}`);
+      continue; // Skip invalid entries
+    }
     ranked.push({
       id: match.id,
       score: match.score,
       rerankScore: normalizedScore,
-      metadata: match.metadata as unknown as VectorizeMetadata,
+      metadata: metadataResult.data,
     });
   }
 

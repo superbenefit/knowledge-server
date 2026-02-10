@@ -5,6 +5,7 @@
  * Uses per-message ack() — never batch.ackAll().
  */
 
+import { z } from 'zod';
 import type { VectorizeMetadata, R2Document } from '../types';
 import {
   extractIdFromKey,
@@ -14,20 +15,22 @@ import {
 } from '../types/storage';
 
 // ---------------------------------------------------------------------------
-// R2 event notification shape (from Cloudflare R2 bucket notifications)
+// R2 event notification schema (validated before processing)
 // ---------------------------------------------------------------------------
 
-interface R2EventNotification {
-  account: string;
-  bucket: string;
-  object: {
-    key: string;
-    size: number;
-    eTag: string;
-  };
-  eventType: 'object-create' | 'object-delete';
-  eventTime: string;
-}
+const R2EventNotificationSchema = z.object({
+  account: z.string(),
+  bucket: z.string(),
+  object: z.object({
+    key: z.string(),
+    size: z.number(),
+    eTag: z.string(),
+  }),
+  eventType: z.enum(['object-create', 'object-delete']),
+  eventTime: z.string(),
+});
+
+type R2EventNotification = z.infer<typeof R2EventNotificationSchema>;
 
 // ---------------------------------------------------------------------------
 // Dependencies interface (for testability)
@@ -44,12 +47,19 @@ interface ConsumerDeps {
 // ---------------------------------------------------------------------------
 
 export async function handleVectorizeQueue(
-  batch: MessageBatch<R2EventNotification>,
+  batch: MessageBatch<unknown>,
   env: ConsumerDeps,
 ): Promise<void> {
   for (const msg of batch.messages) {
     try {
-      const { object, eventType } = msg.body;
+      // Security: Validate message schema before processing
+      const parseResult = R2EventNotificationSchema.safeParse(msg.body);
+      if (!parseResult.success) {
+        console.error(`Invalid queue message schema: ${parseResult.error.message}`);
+        msg.ack(); // Don't retry malformed messages
+        continue;
+      }
+      const { object, eventType } = parseResult.data;
 
       // Only process objects under the content/ prefix
       if (!object.key.startsWith('content/')) {

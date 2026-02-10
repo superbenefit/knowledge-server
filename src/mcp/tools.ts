@@ -5,11 +5,16 @@
  * Phase 3: get_document, search_with_documents become Members tier.
  *
  * See porch-spec.md v0.14 for tier definitions.
+ *
+ * TODO Phase 2: Implement rate limiting using SYNC_STATE KV
+ * Pattern: Track calls per IP/session with sliding window.
+ * Recommended limits: 100 requests/minute for open tier.
+ * Unlimited tool calls can exhaust Vectorize/R2 quotas.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import type { ContentType, R2Document } from '../types';
+import type { ContentType, R2Document, AuthContext } from '../types';
 import { ContentTypeSchema, SearchFiltersSchema } from '../types';
 import { searchKnowledge, getDocument } from '../retrieval';
 import { toR2Key, generateId } from '../types/storage';
@@ -19,6 +24,24 @@ import { checkTierAccess } from '../auth/check';
 // ---------------------------------------------------------------------------
 // Helper functions
 // ---------------------------------------------------------------------------
+
+/**
+ * Extract and validate author ID from auth context.
+ * Returns 'anonymous' for Phase 1, validated userId for Phase 2/3.
+ * Security: Validates format to prevent spoofing in future phases.
+ */
+function getAuthorId(authContext: AuthContext): string {
+  if (!authContext.identity?.userId) {
+    return 'anonymous';
+  }
+  const userId = authContext.identity.userId;
+  // Validate format: alphanumeric with hyphens/underscores, 3-64 chars
+  if (!/^[a-zA-Z0-9_-]{3,64}$/.test(userId)) {
+    console.warn(`Invalid userId format: ${userId}`);
+    return 'anonymous';
+  }
+  return userId;
+}
 
 /**
  * Get definition of a term from the lexicon (tags with contentType 'tag').
@@ -340,7 +363,7 @@ export function registerTools(server: McpServer, env: Env): void {
         };
       }
 
-      const authorId = authContext.identity?.userId || 'anonymous';
+      const authorId = getAuthorId(authContext);
       await saveLink(params, authorId, env);
       return { content: [{ type: 'text', text: 'Link saved successfully' }] };
     },
@@ -365,7 +388,7 @@ export function registerTools(server: McpServer, env: Env): void {
         };
       }
 
-      const authorId = authContext.identity?.userId || 'anonymous';
+      const authorId = getAuthorId(authContext);
       const draft = await createDraft(params, authorId, env);
       return { content: [{ type: 'text', text: JSON.stringify(draft, null, 2) }] };
     },

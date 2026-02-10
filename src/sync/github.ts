@@ -87,6 +87,8 @@ export async function fetchFileContent(
       Accept: 'application/vnd.github.v3+json',
       'User-Agent': 'superbenefit-knowledge-server',
     },
+    // Security: Timeout to prevent hanging on slow/unresponsive API
+    signal: AbortSignal.timeout(10000),
   });
 
   if (!resp.ok) {

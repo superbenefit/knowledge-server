@@ -13,6 +13,10 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
+// TODO Phase 2: Add checkTierAccess() before prompt orchestration
+// Prompts can orchestrate tools without tier validation. When auth is added,
+// prompts should validate access before generating tool invocation messages.
+
 export function registerPrompts(server: McpServer, _env: Env): void {
   // Research workflow
   server.prompt(

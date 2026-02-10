@@ -1,7 +1,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "knowledge-server",
-	"account_id": "c36c9a59f6251430c514f4fff55c3f4a",
+	// account_id removed for security - use CLOUDFLARE_ACCOUNT_ID env var
 	"main": "src/index.ts",
 	"compatibility_date": "2025-03-10",
 	"compatibility_flags": [

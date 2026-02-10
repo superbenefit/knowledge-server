@@ -30,7 +30,11 @@ export function parseMarkdown(raw: string): ParsedMarkdown {
   let frontmatter: Record<string, unknown>;
 
   try {
-    frontmatter = parseYaml(yamlBlock) ?? {};
+    // Security: Limit YAML size and alias depth to prevent DoS (billion laughs attack)
+    if (yamlBlock.length > 10000) {
+      throw new Error('YAML frontmatter too large');
+    }
+    frontmatter = parseYaml(yamlBlock, { maxAliasCount: 10 }) ?? {};
   } catch {
     frontmatter = {};
   }
