@@ -93,6 +93,10 @@ const ONTOLOGY_SCHEMA = {
 // Resource registration
 // ---------------------------------------------------------------------------
 
+// TODO Phase 2: Add checkTierAccess() to all resource handlers
+// Similar pattern to tools.ts authorization. Resources currently bypass
+// tier access checks - Phase 2/3 could expose restricted data without auth.
+
 export function registerResources(server: McpServer, env: Env): void {
   // System prompt for knowledge search
   server.resource(

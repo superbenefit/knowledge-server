@@ -21,11 +21,22 @@ export const api = new OpenAPIHono<{ Bindings: Env }>();
 
 // Global error handler (spec section 10)
 api.onError((err, c) => {
-  console.error('API Error:', err);
+  // Security: Log sanitized error (no stack traces or sensitive data)
+  console.error('API Error:', err instanceof Error ? err.message : 'Unknown error');
   return c.json(
     { error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' } },
     500,
   );
+});
+
+// Security headers middleware
+api.use('*', async (c, next) => {
+  await next();
+  c.header('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
+  c.header('X-Content-Type-Options', 'nosniff');
+  c.header('X-Frame-Options', 'DENY');
+  c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
 });
 
 // CORS middleware — public read-only API

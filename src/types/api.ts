@@ -29,7 +29,7 @@ export type ListParams = z.infer<typeof ListParamsSchema>;
 // Search query params (spec section 8.3)
 export const SearchParamsSchema = z
   .object({
-    q: z.string().min(1),
+    q: z.string().min(1).max(5000),
     contentType: ContentTypeSchema.optional(),
     group: z.string().optional(),
     release: z.string().optional(),

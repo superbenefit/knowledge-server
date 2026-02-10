@@ -28,9 +28,21 @@ export { KnowledgeSyncWorkflow } from './sync/workflow';
 async function handleWebhook(request: Request, env: Env): Promise<Response> {
   const body = await request.text();
   const signature = request.headers.get('x-hub-signature-256');
+  const deliveryId = request.headers.get('x-github-delivery');
 
   if (!await verifyWebhookSignature(body, signature, env.GITHUB_WEBHOOK_SECRET)) {
     return new Response('Invalid signature', { status: 403 });
+  }
+
+  // Security: Replay protection via delivery ID nonce
+  if (deliveryId) {
+    const nonceKey = `webhook:${deliveryId}`;
+    const existing = await env.SYNC_STATE.get(nonceKey);
+    if (existing) {
+      return Response.json({ status: 'duplicate', deliveryId });
+    }
+    // Mark as processed with 24h TTL
+    await env.SYNC_STATE.put(nonceKey, Date.now().toString(), { expirationTtl: 86400 });
   }
 
   const payload: GitHubPushEvent = JSON.parse(body);
@@ -96,8 +108,9 @@ export default {
         route: '/mcp',
         corsOptions: {
           origin: '*',
-          methods: 'GET, POST, DELETE, OPTIONS',
-          headers: 'Content-Type, Authorization, Mcp-Session-Id',
+          // Security: DELETE removed until Phase 3 auth is implemented
+          methods: 'GET, POST, OPTIONS',
+          headers: 'Content-Type, Accept, Authorization, Mcp-Session-Id',
         },
       });
       return handler(request, env, ctx);

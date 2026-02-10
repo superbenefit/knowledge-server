@@ -100,6 +100,10 @@ export function generateId(path: string): string {
  * Example: ("pattern", "cell-governance") → "content/pattern/cell-governance.json"
  */
 export function toR2Key(contentType: ContentType, id: string): string {
+  // Security: Prevent path traversal attacks
+  if (id.includes('..') || id.includes('/') || id.includes('\\')) {
+    throw new Error(`Invalid characters in document ID: ${id}`);
+  }
   return `content/${contentType}/${id}.json`;
 }
 
