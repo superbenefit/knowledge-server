@@ -74,10 +74,18 @@ async function searchLexicon(
 async function listGroups(
   env: Env,
 ): Promise<Array<{ id: string; title: string; description?: string }>> {
-  const listed = await env.KNOWLEDGE.list({ prefix: 'content/group/' });
+  const prefix = 'content/group/';
+  const allObjects: R2Object[] = [];
+  let cursor: string | undefined;
+  do {
+    const listed = await env.KNOWLEDGE.list({ prefix, ...(cursor ? { cursor } : {}) });
+    allObjects.push(...listed.objects);
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
+
   const groups: Array<{ id: string; title: string; description?: string }> = [];
 
-  for (const obj of listed.objects) {
+  for (const obj of allObjects) {
     const data = await env.KNOWLEDGE.get(obj.key);
     if (data) {
       const doc: R2Document = await data.json();
@@ -99,11 +107,19 @@ async function listReleases(
   env: Env,
 ): Promise<Array<{ id: string; title: string; description?: string }>> {
   // Releases are stored as metadata on resources, not as separate documents.
-  // For now, return unique release values from resource documents.
-  const listed = await env.KNOWLEDGE.list({ prefix: 'content/' });
+  // Return unique release values from resource documents.
+  const prefix = 'content/';
+  const allObjects: R2Object[] = [];
+  let cursor: string | undefined;
+  do {
+    const listed = await env.KNOWLEDGE.list({ prefix, ...(cursor ? { cursor } : {}) });
+    allObjects.push(...listed.objects);
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
+
   const releaseSet = new Map<string, { id: string; title: string; description?: string }>();
 
-  for (const obj of listed.objects) {
+  for (const obj of allObjects) {
     const data = await env.KNOWLEDGE.get(obj.key);
     if (data) {
       const doc: R2Document = await data.json();
@@ -196,14 +212,14 @@ export function registerTools(server: McpServer, env: Env): void {
       'governance practices, regenerative economics, and web3 coordination. ' +
       'Returns semantically similar content chunks with metadata.',
     {
-      query: z.string().describe('Natural language search query'),
+      query: z.string().max(5000).describe('Natural language search query'),
       filters: z
         .object({
           contentType: ContentTypeSchema.optional().describe(
             'Filter by content type (pattern, tag, article, etc.)',
           ),
-          group: z.string().optional().describe('Filter by group/cell (dao-primitives, allinforsport)'),
-          release: z.string().optional().describe('Filter by creative release'),
+          group: z.string().max(200).optional().describe('Filter by group/cell (dao-primitives, allinforsport)'),
+          release: z.string().max(200).optional().describe('Filter by creative release'),
         })
         .optional(),
     },
@@ -225,7 +241,7 @@ export function registerTools(server: McpServer, env: Env): void {
     'define_term',
     "Get the definition of a term from the SuperBenefit lexicon. " +
       "Use this when users ask 'what is X?' for DAO/web3 terminology.",
-    { term: z.string().describe('Term to define') },
+    { term: z.string().max(200).describe('Term to define') },
     async ({ term }) => {
       const authContext = await resolveAuthContext(env);
       const access = checkTierAccess('open', authContext);
@@ -250,7 +266,7 @@ export function registerTools(server: McpServer, env: Env): void {
   server.tool(
     'search_lexicon',
     'Search lexicon entries by keyword. Returns matching terms with definitions.',
-    { keyword: z.string().describe('Keyword to search') },
+    { keyword: z.string().max(200).describe('Keyword to search') },
     async ({ keyword }) => {
       const authContext = await resolveAuthContext(env);
       const access = checkTierAccess('open', authContext);
@@ -300,7 +316,7 @@ export function registerTools(server: McpServer, env: Env): void {
     'Get the full content of a document by its contentType and ID.',
     {
       contentType: ContentTypeSchema.describe('Content type of the document'),
-      id: z.string().describe('Document ID'),
+      id: z.string().max(64).describe('Document ID'),
     },
     async ({ contentType, id }) => {
       const authContext = await resolveAuthContext(env);
@@ -325,7 +341,7 @@ export function registerTools(server: McpServer, env: Env): void {
     'search_with_documents',
     'Search and return full document content for results.',
     {
-      query: z.string().describe('Search query'),
+      query: z.string().max(5000).describe('Search query'),
       filters: SearchFiltersSchema.optional(),
     },
     async ({ query, filters }) => {
@@ -348,9 +364,9 @@ export function registerTools(server: McpServer, env: Env): void {
     'save_link',
     'Save a new link to the library.',
     {
-      url: z.string().url().describe('URL to save'),
-      title: z.string().describe('Link title'),
-      description: z.string().optional().describe('Brief description'),
+      url: z.string().url().max(2000).describe('URL to save'),
+      title: z.string().max(500).describe('Link title'),
+      description: z.string().max(2000).optional().describe('Brief description'),
     },
     async (params) => {
       const authContext = await resolveAuthContext(env);
@@ -374,8 +390,8 @@ export function registerTools(server: McpServer, env: Env): void {
     'Create a new draft document in the knowledge base.',
     {
       contentType: ContentTypeSchema.describe('Type of content to create'),
-      title: z.string().describe('Document title'),
-      content: z.string().describe('Markdown content'),
+      title: z.string().max(500).describe('Document title'),
+      content: z.string().max(100000).describe('Markdown content'),
     },
     async (params) => {
       const authContext = await resolveAuthContext(env);

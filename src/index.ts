@@ -101,6 +101,16 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
+    // Rate limiting — key on client IP
+    const clientIp = request.headers.get('CF-Connecting-IP') ?? 'unknown';
+    const { success } = await env.RATE_LIMITER.limit({ key: clientIp });
+    if (!success) {
+      return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json', 'Retry-After': '60' },
+      });
+    }
+
     // MCP server — direct to handler, bypassing Hono
     if (url.pathname === '/mcp' || url.pathname.startsWith('/mcp/')) {
       const server = createMcpServer(env);

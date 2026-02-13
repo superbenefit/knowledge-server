@@ -79,7 +79,9 @@ api.openapi(listEntriesRoute, async (c) => {
   // Build R2 list prefix based on contentType filter
   const prefix = contentType ? `content/${contentType}/` : 'content/';
 
-  // Collect all R2 object keys, handling truncated listings via cursor
+  // Collect R2 object keys with cursor pagination.
+  // Cap at a reasonable maximum to prevent OOM on huge buckets.
+  const maxKeys = 10000;
   const allObjects: R2Object[] = [];
   let cursor: string | undefined;
   do {
@@ -90,29 +92,55 @@ api.openapi(listEntriesRoute, async (c) => {
     });
     allObjects.push(...listed.objects);
     cursor = listed.truncated ? listed.cursor : undefined;
-  } while (cursor);
+  } while (cursor && allObjects.length < maxKeys);
 
-  // Batch-fetch documents in parallel
-  const docs = await Promise.all(
-    allObjects.map(async (obj): Promise<R2Document | null> => {
-      const object = await c.env.KNOWLEDGE.get(obj.key);
-      if (!object) return null;
-      return object.json();
-    }),
-  );
+  // If group/release filters are active, we must fetch metadata to filter.
+  // Otherwise, we can determine total from keys and only fetch the page.
+  let paginated: R2Document[];
+  let total: number;
 
-  // Filter out nulls and apply optional metadata filters
-  let entries = docs.filter((doc): doc is R2Document => {
-    if (!doc) return false;
-    if (group && doc.metadata?.group !== group) return false;
-    if (release && doc.metadata?.release !== release) return false;
-    return true;
-  });
-
-  const total = entries.length;
-
-  // Apply pagination
-  const paginated = entries.slice(offset, offset + limit);
+  if (group || release) {
+    // Need metadata to filter — fetch in batches of 50 to limit concurrency
+    const BATCH_SIZE = 50;
+    const allDocs: R2Document[] = [];
+    for (let i = 0; i < allObjects.length; i += BATCH_SIZE) {
+      const batch = allObjects.slice(i, i + BATCH_SIZE);
+      const batchDocs = await Promise.all(
+        batch.map(async (obj): Promise<R2Document | null> => {
+          const object = await c.env.KNOWLEDGE.get(obj.key);
+          if (!object) return null;
+          return object.json();
+        }),
+      );
+      for (const doc of batchDocs) {
+        if (!doc) continue;
+        if (group && doc.metadata?.group !== group) continue;
+        if (release && doc.metadata?.release !== release) continue;
+        allDocs.push(doc);
+      }
+    }
+    total = allDocs.length;
+    paginated = allDocs.slice(offset, offset + limit);
+  } else {
+    // No metadata filters — only fetch the paginated slice of documents
+    total = allObjects.length;
+    const pageObjects = allObjects.slice(offset, offset + limit);
+    const BATCH_SIZE = 50;
+    paginated = [];
+    for (let i = 0; i < pageObjects.length; i += BATCH_SIZE) {
+      const batch = pageObjects.slice(i, i + BATCH_SIZE);
+      const batchDocs = await Promise.all(
+        batch.map(async (obj): Promise<R2Document | null> => {
+          const object = await c.env.KNOWLEDGE.get(obj.key);
+          if (!object) return null;
+          return object.json();
+        }),
+      );
+      for (const doc of batchDocs) {
+        if (doc) paginated.push(doc);
+      }
+    }
+  }
 
   return c.json(
     { data: paginated, total, offset, limit },

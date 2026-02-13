@@ -45,12 +45,20 @@
 			"remote": true
 		}
 	],
+	"ratelimits": [
+		{
+			"name": "RATE_LIMITER",
+			"namespace_id": "1002",
+			"simple": { "limit": 100, "period": 60 }
+		}
+	],
 	"queues": {
 		"consumers": [
 			{
 				"queue": "superbenefit-knowledge-sync",
 				"max_batch_size": 10,
-				"max_batch_timeout": 30
+				"max_batch_timeout": 30,
+				"dead_letter_queue": "superbenefit-knowledge-dlq"
 			}
 		]
 	}

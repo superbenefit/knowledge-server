@@ -49,4 +49,6 @@ export interface GitHubPushEvent {
 export interface ParsedMarkdown {
   frontmatter: Record<string, unknown>;
   body: string;
+  /** Set when YAML frontmatter parsing fails. Workflow should treat as NonRetryableError. */
+  parseError?: string;
 }
