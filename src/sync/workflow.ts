@@ -45,12 +45,21 @@ export class KnowledgeSyncWorkflow extends WorkflowEntrypoint<Env, SyncParams> {
             if (status === 404) {
               throw new NonRetryableError(`File not found: ${filePath}`);
             }
+            if (status === 403) {
+              throw new NonRetryableError(`GitHub API forbidden (invalid token?): ${filePath}`);
+            }
             // 429, 5xx etc. will be retried by the workflow step
             throw err;
           }
 
           // Parse frontmatter and body
           const parsed = parseMarkdown(raw);
+
+          // If YAML parsing failed, skip this file instead of deleting existing data
+          if (parsed.parseError) {
+            console.log(`Skipping ${filePath}: YAML parse error — ${parsed.parseError}`);
+            throw new NonRetryableError(`YAML parse error in ${filePath}: ${parsed.parseError}`);
+          }
 
           // Only sync published, non-draft content
           if (!shouldSync(parsed.frontmatter)) {
@@ -62,6 +71,9 @@ export class KnowledgeSyncWorkflow extends WorkflowEntrypoint<Env, SyncParams> {
             const existing = await this.env.KNOWLEDGE.head(key);
             if (existing) {
               await this.env.KNOWLEDGE.delete(key);
+              console.log(`Deleted ${filePath}: unpublished or draft`);
+            } else {
+              console.log(`Skipped ${filePath}: not published or is draft`);
             }
             return;
           }
@@ -79,10 +91,16 @@ export class KnowledgeSyncWorkflow extends WorkflowEntrypoint<Env, SyncParams> {
             commitSha,
           };
 
-          await this.env.KNOWLEDGE.put(
-            toR2Key(contentType, id),
-            JSON.stringify(r2Doc),
-          );
+          try {
+            await this.env.KNOWLEDGE.put(
+              toR2Key(contentType, id),
+              JSON.stringify(r2Doc),
+            );
+            console.log(`Synced ${filePath} as ${contentType}/${id}`);
+          } catch (err) {
+            console.error(`R2 put failed for ${filePath}:`, err instanceof Error ? err.message : err);
+            throw err;
+          }
         },
       );
     }
@@ -93,6 +111,7 @@ export class KnowledgeSyncWorkflow extends WorkflowEntrypoint<Env, SyncParams> {
         const contentType = inferContentType(filePath);
         const id = generateId(filePath);
         await this.env.KNOWLEDGE.delete(toR2Key(contentType, id));
+        console.log(`Deleted ${filePath} (${contentType}/${id}) — removed from Git`);
       });
     }
   }

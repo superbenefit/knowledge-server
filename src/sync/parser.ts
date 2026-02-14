@@ -29,14 +29,18 @@ export function parseMarkdown(raw: string): ParsedMarkdown {
   const [, yamlBlock, body] = match;
   let frontmatter: Record<string, unknown>;
 
+  let parseError: string | undefined;
   try {
     // Security: Limit YAML size and alias depth to prevent DoS (billion laughs attack)
     if (yamlBlock.length > 10000) {
       throw new Error('YAML frontmatter too large');
     }
     frontmatter = parseYaml(yamlBlock, { maxAliasCount: 10 }) ?? {};
-  } catch {
+  } catch (err) {
+    // Signal the error rather than silently returning empty frontmatter,
+    // which would cause shouldSync() → false → deletion of existing R2 document.
     frontmatter = {};
+    parseError = err instanceof Error ? err.message : 'Unknown YAML parse error';
   }
 
   if (typeof frontmatter !== 'object' || frontmatter === null || Array.isArray(frontmatter)) {
@@ -46,6 +50,7 @@ export function parseMarkdown(raw: string): ParsedMarkdown {
   return {
     frontmatter,
     body: body.trim(),
+    ...(parseError ? { parseError } : {}),
   };
 }
 

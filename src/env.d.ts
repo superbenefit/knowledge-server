@@ -25,6 +25,9 @@ declare namespace Cloudflare {
     // Workflow
     SYNC_WORKFLOW: Workflow;
 
+    // Rate limiting
+    RATE_LIMITER: RateLimit;
+
     // Phase 2 (optional, unused until then)
     CF_ACCESS_AUD?: string;
   }
@@ -52,6 +55,9 @@ interface Env {
 
   // Workflow
   SYNC_WORKFLOW: Workflow;
+
+  // Rate limiting
+  RATE_LIMITER: RateLimit;
 
   // Phase 2 (optional, unused until then)
   CF_ACCESS_AUD?: string;
