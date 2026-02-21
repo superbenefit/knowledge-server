@@ -20,6 +20,7 @@ Building an MCP server + public REST API for SuperBenefit DAO that:
 - Vectorize for semantic search
 - R2 for content storage
 - Queues for event-driven indexing
+- `@superbenefit/porch` (local `file:../mcporch`) for shared auth, security headers
 
 ## Code Standards
 
@@ -35,11 +36,12 @@ Building an MCP server + public REST API for SuperBenefit DAO that:
 
 - Use stateless `createMcpHandler` from `agents/mcp`
 - Register tools via `server.tool()` in the init callback
+- Auth types and functions imported from `@superbenefit/porch/auth` (not local)
+- Security headers imported from `@superbenefit/porch/security`
 - Every tool uses `resolveAuthContext()` + `checkTierAccess()` pattern:
 
 ```typescript
-import { resolveAuthContext } from '../auth/resolve';
-import { checkTierAccess } from '../auth/check';
+import { resolveAuthContext, checkTierAccess } from '@superbenefit/porch/auth';
 
 server.tool('my_tool', 'description', { param: z.string() },
   async ({ param }) => {
@@ -62,29 +64,25 @@ server.tool('my_tool', 'description', { param: z.string() },
 - ❌ `batch.ackAll()` for queues → ✅ Per-message `msg.ack()`
 - ❌ `topK: 100` with full metadata → ✅ Max 20, use 'indexed' for more
 - ❌ R2 bucket CORS config for API → ✅ Hono middleware handles CORS
+- ❌ Local auth files (`src/auth/`) → ✅ Import from `@superbenefit/porch/auth`
 
 ## Project Structure
 
 ```
 src/
-├── index.ts              # Main router (routing split: MCP direct, REST through Hono)
+├── index.ts              # Main router (rate limiting, security headers, routing split)
 ├── types/
-│   ├── index.ts          # Re-exports all types
-│   ├── content.ts        # Content schemas, PATH_TYPE_MAP, inferContentType
-│   ├── auth.ts           # AccessTier, AuthContext, Identity
+│   ├── index.ts          # Re-exports all types (auth from @superbenefit/porch/auth)
+│   ├── content.ts        # 21 content type schemas, PATH_TYPE_MAP, inferContentType
 │   ├── api.ts            # API request/response types
 │   ├── storage.ts        # R2Document, VectorizeMetadata
 │   └── sync.ts           # SyncParams, R2EventNotification
-├── auth/
-│   ├── resolve.ts        # resolveAuthContext() — porch framework core
-│   ├── check.ts          # checkTierAccess() — tier comparison
-│   └── index.ts          # Exports
 ├── api/                  # Public REST API
-│   ├── routes.ts         # Hono + OpenAPI routes
+│   ├── routes.ts         # Hono + OpenAPI routes (health, entries, search, openapi)
 │   └── schemas.ts        # Zod schemas
 ├── mcp/
-│   ├── server.ts         # createMcpHandler setup
-│   ├── tools.ts          # MCP tool registrations
+│   ├── server.ts         # createMcpServer factory
+│   ├── tools.ts          # MCP tool registrations (auth from @superbenefit/porch/auth)
 │   ├── resources.ts      # MCP resource definitions
 │   └── prompts.ts        # MCP prompt templates
 ├── sync/
@@ -98,23 +96,20 @@ src/
     └── rerank.ts         # BGE reranker
 ```
 
+> **No `src/auth/` directory** — auth lives in `@superbenefit/porch/auth` (mcporch repo).
+
 ## Key Implementation Details
 
 ### Porch Access Control (Phase 1)
 
-```typescript
-// src/auth/resolve.ts — always returns open tier in Phase 1
-export async function resolveAuthContext(_env: Env): Promise<AuthContext> {
-  return { identity: null, tier: 'open' };
-}
+Auth functions live in mcporch (`@superbenefit/porch/auth`), not in this repo:
 
-// src/auth/check.ts — tier comparison
-export function checkTierAccess(requiredTier: AccessTier, authContext: AuthContext) {
-  if (TIER_LEVEL[authContext.tier] >= TIER_LEVEL[requiredTier]) {
-    return { allowed: true, authContext };
-  }
-  return { allowed: false, requiredTier, currentTier: authContext.tier };
-}
+```typescript
+import { resolveAuthContext, checkTierAccess } from '@superbenefit/porch/auth';
+
+// Phase 1: always returns { identity: null, tier: 'open', address: null, roles: null }
+const authContext = await resolveAuthContext(env);
+const access = checkTierAccess('open', authContext);
 ```
 
 ### Two-Stage Retrieval
@@ -138,23 +133,16 @@ const reranked = await env.AI.run('@cf/baai/bge-reranker-base', {
 ### Router Integration
 
 ```typescript
-// src/index.ts — routing split
+// src/index.ts — rate limiting + security headers + routing split
+import { SECURITY_HEADERS } from '@superbenefit/porch/security';
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    const url = new URL(request.url);
-
-    // MCP server — direct to handler, bypassing Hono
-    if (url.pathname === '/mcp' || url.pathname.startsWith('/mcp/')) {
-      return McpHandler.fetch(request, env, ctx);
-    }
-
-    // GitHub webhook
-    if (url.pathname === '/webhook' && request.method === 'POST') {
-      return handleWebhook(request, env);
-    }
-
-    // Everything else through Hono (REST API, health checks)
-    return app.fetch(request, env, ctx);
+    // Rate limiting on all requests (429 with SECURITY_HEADERS)
+    // MCP → createMcpHandler (direct, security headers injected)
+    // POST /webhook → handleWebhook (with replay protection via delivery ID)
+    // Everything else → Hono (REST API at /api/v1)
+    ...
   },
   queue: handleVectorizeQueue,
 };
@@ -171,6 +159,7 @@ npx @modelcontextprotocol/inspector
 # Connect to http://localhost:8788/mcp
 
 # REST API
+curl http://localhost:8788/api/v1/health
 curl http://localhost:8788/api/v1/entries
 curl http://localhost:8788/api/v1/search?q=governance
 curl http://localhost:8788/api/v1/openapi.json
@@ -199,6 +188,4 @@ When compacting, preserve:
 
 ## Specification Reference
 
-Full spec at: `docs/spec.md` (v0.13)
-
-Implementation plan at: `docs/plan.md` (v2.8)
+Full spec at: `docs/spec.md` (v0.16)

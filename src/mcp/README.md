@@ -5,7 +5,7 @@
 **Source:** `src/mcp/`
 **Files:** 5 (`index.ts`, `server.ts`, `tools.ts`, `resources.ts`, `prompts.ts`)
 **Spec reference:** `docs/spec.md` sections 7.3-7.5
-**Depends on:** `types`, `auth` (`resolveAuthContext`, `checkTierAccess`), `retrieval` (`searchKnowledge`, `getDocument`)
+**Depends on:** `types`, `@superbenefit/porch/auth` (`resolveAuthContext`, `checkTierAccess`), `retrieval` (`searchKnowledge`, `getDocument`)
 **Depended on by:** `index` (routes `/mcp` requests to `McpHandler`)
 
 ---
@@ -154,7 +154,7 @@ if (!access.allowed) {
 ```
 
 #### Dependencies
-- **Internal:** `../types` (ContentTypeSchema, SearchFiltersSchema, ContentType, R2Document), `../retrieval` (searchKnowledge, getDocument), `../types/storage` (toR2Key, generateId), `../auth/resolve`, `../auth/check`
+- **Internal:** `../types` (ContentTypeSchema, SearchFiltersSchema, ContentType, R2Document), `../retrieval` (searchKnowledge, getDocument), `../types/storage` (toR2Key, generateId), `@superbenefit/porch/auth`
 
 ---
 
@@ -288,7 +288,7 @@ All tools follow the same error pattern:
 
 ## Cross-References
 
-- [auth](../auth/) — Porch access control guard pattern
+- [@superbenefit/porch/auth] — Porch access control guard pattern
 - [retrieval](../retrieval/) — `searchKnowledge()` pipeline called by search tools
 - [types](../types/) — `ContentType`, `SearchFilters`, `R2Document` schemas
 - [index](../) — Routing `/mcp` to `McpHandler`

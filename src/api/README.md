@@ -12,7 +12,7 @@
 
 ## Overview
 
-The API module provides a public REST API for the knowledge base, designed for web frontends and external integrations that don't use MCP. It exposes three routes plus an auto-generated OpenAPI spec, all read-only, all unauthenticated (Phase 1).
+The API module provides a public REST API for the knowledge base, designed for web frontends and external integrations that don't use MCP. It exposes four routes plus an auto-generated OpenAPI spec, all read-only, all unauthenticated (Phase 1).
 
 The API is built with `@hono/zod-openapi`, which combines Hono's routing with Zod schema validation and automatic OpenAPI 3.1 document generation. Route parameters and responses are validated at runtime and documented in the generated spec at `/api/v1/openapi.json`.
 
@@ -25,6 +25,7 @@ graph LR
     Client["Web Client /<br/>External Service"] -->|GET| Hono["Hono Router<br/>/api/v1/*"]
 
     Hono --> CORS["CORS Middleware<br/>origin: *"]
+    CORS --> Health["GET /health<br/>{ status: 'ok' }"]
     CORS --> List["GET /entries<br/>R2 full-scan + paginate"]
     CORS --> Get["GET /entries/:type/:id<br/>R2 direct lookup"]
     CORS --> Search["GET /search<br/>searchKnowledge()"]
@@ -57,6 +58,12 @@ graph LR
 - Global error handler returns `{ error: { code: 'INTERNAL_ERROR', message: '...' } }` with 500 status
 - CORS middleware: `origin: '*'`, methods: `GET, HEAD, OPTIONS`, headers: `Content-Type, Accept`, max-age: 86400 (24h preflight cache)
 - Cache headers constant: `Cache-Control: public, max-age=300, stale-while-revalidate=3600`
+
+---
+
+**`GET /health` — Health check**
+
+Returns `{ status: 'ok' }` with 200 status. No cache headers, no binding access — pure liveness check for ops monitoring.
 
 ---
 
@@ -221,6 +228,9 @@ See [types](../types/) for full definitions.
 ## Example Requests
 
 ```bash
+# Health check
+curl http://localhost:8788/api/v1/health
+
 # List all entries
 curl http://localhost:8788/api/v1/entries
 

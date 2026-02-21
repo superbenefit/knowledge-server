@@ -16,6 +16,7 @@ import { api } from './api/routes';
 import { createMcpServer } from './mcp/server';
 import { handleVectorizeQueue } from './consumers/vectorize';
 import { verifyWebhookSignature, isExcluded } from './sync/github';
+import { SECURITY_HEADERS } from '@superbenefit/porch/security';
 import type { GitHubPushEvent } from './types/sync';
 
 // Re-export workflow class so Cloudflare can discover it via wrangler.jsonc class_name
@@ -107,7 +108,7 @@ export default {
     if (!success) {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), {
         status: 429,
-        headers: { 'Content-Type': 'application/json', 'Retry-After': '60' },
+        headers: { 'Content-Type': 'application/json', 'Retry-After': '60', ...SECURITY_HEADERS },
       });
     }
 
@@ -123,7 +124,14 @@ export default {
           headers: 'Content-Type, Accept, Authorization, Mcp-Session-Id',
         },
       });
-      return handler(request, env, ctx);
+      const response = await handler(request, env, ctx);
+
+      // Inject security headers into MCP response
+      const securedResponse = new Response(response.body, response);
+      for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+        securedResponse.headers.set(key, value);
+      }
+      return securedResponse;
     }
 
     // GitHub webhook

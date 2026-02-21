@@ -18,8 +18,7 @@ import type { ContentType, R2Document, AuthContext } from '../types';
 import { ContentTypeSchema, SearchFiltersSchema } from '../types';
 import { searchKnowledge, getDocument } from '../retrieval';
 import { toR2Key, generateId } from '../types/storage';
-import { resolveAuthContext } from '../auth/resolve';
-import { checkTierAccess } from '../auth/check';
+import { resolveAuthContext, checkTierAccess } from '@superbenefit/porch/auth';
 
 // ---------------------------------------------------------------------------
 // Helper functions
