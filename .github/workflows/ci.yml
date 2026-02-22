@@ -6,18 +6,27 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
+      # Checkout both repos as siblings so file:../mcporch resolves
       - uses: actions/checkout@v4
+        with:
+          path: knowledge-server
 
-      # Checkout mcporch sibling for file:../mcporch dependency
       - uses: actions/checkout@v4
         with:
           repository: superbenefit/mcporch
-          path: ../mcporch
+          path: mcporch
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
+          cache-dependency-path: knowledge-server/package-lock.json
+
       - run: npm ci
+        working-directory: knowledge-server
+
       - run: npm run type-check
+        working-directory: knowledge-server
+
       - run: npm test
+        working-directory: knowledge-server
