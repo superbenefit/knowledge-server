@@ -1,4 +1,4 @@
-import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { cors } from 'hono/cors';
 import { toR2Key } from '../types/storage';
 import type { R2Document } from '../types/storage';
@@ -54,6 +54,25 @@ api.use(
 const CACHE_HEADERS = {
   'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600',
 } as const;
+
+// ---------------------------------------------------------------------------
+// GET /health — health check
+// ---------------------------------------------------------------------------
+
+const healthRoute = createRoute({
+  method: 'get',
+  path: '/health',
+  responses: {
+    200: {
+      content: { 'application/json': { schema: z.object({ status: z.string() }) } },
+      description: 'Health check',
+    },
+  },
+});
+
+api.openapi(healthRoute, async (c) => {
+  return c.json({ status: 'ok' }, 200);
+});
 
 // ---------------------------------------------------------------------------
 // GET /entries — list/filter entries

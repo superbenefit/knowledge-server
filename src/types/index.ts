@@ -27,6 +27,7 @@ export {
   // Story type schemas
   StudySchema,
   ArticleSchema,
+  GuideSchema,
   // Data type schemas
   PersonSchema,
   GroupSchema,
@@ -63,8 +64,8 @@ export {
   TIER_LEVEL,
   IdentitySchema,
   AuthContextSchema,
-} from '../auth/types';
-export type { AccessTier, Identity, AuthContext, PorchRoles } from '../auth/types';
+} from '@superbenefit/porch/auth';
+export type { AccessTier, Identity, AuthContext, HatsRole } from '@superbenefit/porch/auth';
 
 // API (spec sections 6, 8)
 export {

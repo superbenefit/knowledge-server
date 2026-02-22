@@ -10,7 +10,7 @@ export const ContentTypeSchema = z
     // Resource types
     'resource', 'pattern', 'practice', 'primitive', 'protocol', 'playbook', 'question',
     // Story types
-    'story', 'study', 'article',
+    'story', 'study', 'article', 'guide',
     // Data types
     'data', 'person', 'group', 'project', 'place', 'gathering',
   ])
@@ -22,7 +22,7 @@ export type ContentType = z.infer<typeof ContentTypeSchema>;
 export const RESOURCE_TYPES: ContentType[] = [
   'pattern', 'practice', 'primitive', 'protocol', 'playbook',
 ];
-export const STORY_TYPES: ContentType[] = ['study', 'article'];
+export const STORY_TYPES: ContentType[] = ['study', 'article', 'guide'];
 export const REFERENCE_TYPES: ContentType[] = ['index', 'link', 'tag'];
 export const DATA_TYPES: ContentType[] = [
   'person', 'group', 'project', 'place', 'gathering',
@@ -40,6 +40,7 @@ export const PATH_TYPE_MAP: Record<string, ContentType> = {
   'data/resources/playbooks':   'playbook',
   'data/stories/studies':       'study',
   'data/stories/articles':      'article',
+  'data/stories/guides':        'guide',
   'data/questions':             'question',
   'data/people':                'person',
   'data/groups':                'group',
@@ -174,6 +175,8 @@ export const ArticleSchema = StorySchema.extend({
 
 export type ArticleFrontmatter = z.infer<typeof ArticleSchema>;
 
+export const GuideSchema = StorySchema;
+
 // ---------------------------------------------------------------------------
 // Concrete type schemas — Data types
 // ---------------------------------------------------------------------------
@@ -247,6 +250,7 @@ export const ContentSchema = z.discriminatedUnion('type', [
   QuestionSchema.extend({ type: z.literal('question') }),
   StudySchema.extend({ type: z.literal('study') }),
   ArticleSchema.extend({ type: z.literal('article') }),
+  GuideSchema.extend({ type: z.literal('guide') }),
   PersonSchema.extend({ type: z.literal('person') }),
   GroupSchema.extend({ type: z.literal('group') }),
   ProjectSchema.extend({ type: z.literal('project') }),

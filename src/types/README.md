@@ -1,9 +1,9 @@
 # Types
 
-> Defines the entire type system: 20-type content ontology, auth model, API shapes, storage schemas, and sync payloads.
+> Defines the entire type system: 21-type content ontology, auth model, API shapes, storage schemas, and sync payloads.
 
 **Source:** `src/types/`
-**Files:** 5 (`index.ts`, `content.ts`, `api.ts`, `storage.ts`, `sync.ts`) + auth types re-exported from `src/auth/types.ts`
+**Files:** 5 (`index.ts`, `content.ts`, `api.ts`, `storage.ts`, `sync.ts`) + auth types re-exported from `@superbenefit/porch/auth`
 **Spec reference:** `docs/spec.md` sections 2, 3, 4, 5, 6, 8
 **Depends on:** none (leaf module)
 **Depended on by:** `auth`, `retrieval`, `consumers`, `sync`, `mcp`, `api`, `index`
@@ -14,7 +14,7 @@
 
 The types directory is the foundation of the entire codebase. Every other module imports from it, and nothing imports into it. It defines Zod schemas that serve triple duty: runtime validation, TypeScript type inference, and OpenAPI documentation generation (via `@hono/zod-openapi`).
 
-The type system models SuperBenefit's knowledge ontology — a 20-type hierarchy of content ranging from governance patterns and coordination protocols to people, groups, and events. This ontology is reflected in storage (R2 key paths, Vectorize metadata), search (filter schemas), and API responses.
+The type system models SuperBenefit's knowledge ontology — a 21-type hierarchy of content ranging from governance patterns and coordination protocols to people, groups, and events. This ontology is reflected in storage (R2 key paths, Vectorize metadata), search (filter schemas), and API responses.
 
 All schemas use `@hono/zod-openapi`'s `.openapi()` extension to attach OpenAPI metadata, making them available in the auto-generated `/api/v1/openapi.json` spec.
 
@@ -23,7 +23,7 @@ All schemas use `@hono/zod-openapi`'s `.openapi()` extension to attach OpenAPI m
 ```mermaid
 graph LR
     subgraph "Type System"
-        content["content.ts<br/>20 content types"]
+        content["content.ts<br/>21 content types"]
         authtypes["../auth/types.ts<br/>Access tiers"]
         storage["storage.ts<br/>R2 + Vectorize shapes"]
         api["api.ts<br/>API request/response"]
@@ -66,23 +66,23 @@ All exports are re-exports. Organized into sections by spec reference:
 | Sync (spec 5) | `SyncParamsSchema` | `SyncParams`, `R2EventNotification`, `GitHubPushEvent`, `ParsedMarkdown` | |
 
 #### Dependencies
-- **Internal:** `./content`, `../auth/types`, `./api`, `./storage`, `./sync`
+- **Internal:** `./content`, `@superbenefit/porch/auth`, `./api`, `./storage`, `./sync`
 - **External:** none
 
 ---
 
 ### `content.ts`
 
-**Purpose:** Defines the 20-type content ontology as a Zod schema hierarchy with discriminated union.
+**Purpose:** Defines the 21-type content ontology as a Zod schema hierarchy with discriminated union.
 
 #### Exports
 
 | Export | Kind | Description |
 |--------|------|-------------|
-| `ContentTypeSchema` | Zod enum | All 20 content type literals |
+| `ContentTypeSchema` | Zod enum | All 21 content type literals |
 | `ContentType` | Type | Inferred union type |
 | `RESOURCE_TYPES` | Constant | `['pattern', 'practice', 'primitive', 'protocol', 'playbook']` |
-| `STORY_TYPES` | Constant | `['study', 'article']` |
+| `STORY_TYPES` | Constant | `['study', 'article', 'guide']` |
 | `REFERENCE_TYPES` | Constant | `['index', 'link', 'tag']` |
 | `DATA_TYPES` | Constant | `['person', 'group', 'project', 'place', 'gathering']` |
 | `PATH_TYPE_MAP` | Record | Maps 16 path prefixes to content types |
@@ -107,7 +107,7 @@ All exports are re-exports. Organized into sections by spec reference:
 | `ProjectSchema` | Zod object | Extends `DataSchema` with `slug`, `status` (`active`/`completed`/`paused`/`archived`), `lead`, `contributors`, `group`, `repository`, `homepage`, `startDate`, `endDate` |
 | `PlaceSchema` | Zod object | Extends `DataSchema` with `geo`, `containedIn`, `region` |
 | `GatheringSchema` | Zod object | Extends `DataSchema` with `location`, `startDate`, `endDate`, `organizers`, `attendees`, `outcomes` |
-| `ContentSchema` | Discriminated union | Union of 16 concrete types, discriminated on `type` field |
+| `ContentSchema` | Discriminated union | Union of 17 concrete types, discriminated on `type` field |
 
 #### Internal Logic
 
@@ -159,14 +159,14 @@ graph TD
 - `data/people` → `person`, `data/groups` → `group`, `data/projects` → `project`, etc.
 - `docs` → `file` (type from frontmatter, not path)
 
-**`ContentSchema` discriminated union** includes 16 of the 20 types (excludes parent types `reference`, `resource`, `story`, `data` and the root `index` type as they are not standalone document types in the union).
+**`ContentSchema` discriminated union** includes 17 of the 21 types (excludes parent types `reference`, `resource`, `story`, `data` and the root `index` type as they are not standalone document types in the union).
 
 #### Dependencies
 - **External:** `@hono/zod-openapi` (Zod with OpenAPI extensions)
 
 ---
 
-### Auth types (re-exported from `src/auth/types.ts`)
+### Auth types (re-exported from `@superbenefit/porch/auth`)
 
 **Purpose:** Defines the three-tier access control model for the porch framework.
 
@@ -181,7 +181,7 @@ graph TD
 | `IdentitySchema` | Zod object | Schema for Identity |
 | `AuthContext` | Interface | `{ identity, tier, address, roles }` |
 | `AuthContextSchema` | Zod object | Schema for AuthContext |
-| `PorchRoles` | Type | Phase 3 Hats Protocol roles mapping |
+| `HatsRole` | Type | Phase 3 Hats Protocol roles mapping |
 
 #### Internal Logic
 
@@ -322,7 +322,7 @@ The `SearchFiltersSchema` is shared between REST API and MCP tools — both use 
 
 | Type | Owner | Used By | Description |
 |------|-------|---------|-------------|
-| `ContentType` | `content.ts` | Everything | Union of 20 content type strings |
+| `ContentType` | `content.ts` | Everything | Union of 21 content type strings |
 | `R2Document` | `storage.ts` | `sync`, `consumers`, `retrieval`, `mcp`, `api` | The canonical document stored in R2 |
 | `VectorizeMetadata` | `storage.ts` | `consumers`, `retrieval` | Metadata attached to vectors |
 | `AuthContext` | `auth.ts` | `auth`, `mcp` | Resolved access context for a request |

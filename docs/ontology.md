@@ -26,7 +26,8 @@ file (root type)
 │
 ├── story (extends file) — narratives
 │   ├── study — case studies
-│   └── article — essays, publications
+│   ├── article — essays, publications
+│   └── guide — implementation guides
 │
 └── data (extends file) — entities/actors
     ├── person — people profiles
@@ -36,7 +37,7 @@ file (root type)
     └── gathering — events, conferences
 ```
 
-**Note**: `question` is a standalone type, not a resource sub-type. Per Simon Grant: "questions sit at the growing edge of knowledge" — they represent generative unknowns, not commoned artifacts. The `guide` type from spec v0.8 is deprecated; use `article` for written guides.
+**Note**: `question` is a standalone type, not a resource sub-type. Per Simon Grant: "questions sit at the growing edge of knowledge" — they represent generative unknowns, not commoned artifacts. The `guide` type was restored as a distinct story sub-type for implementation guides (extends story, no additional fields).
 
 ---
 
@@ -102,7 +103,8 @@ knowledge-base/
 │   │   └── playbooks/                 # playbook
 │   ├── stories/                       # story sub-types
 │   │   ├── studies/                   # study
-│   │   └── articles/                  # article
+│   │   ├── articles/                  # article
+│   │   └── guides/                    # guide
 │   ├── questions/                     # question (standalone)
 │   ├── people/                        # person
 │   ├── groups/                        # group
@@ -140,6 +142,7 @@ knowledge-base/
 | question | `data/questions/` | file | Question |
 | study | `data/stories/studies/` | story | Report |
 | article | `data/stories/articles/` | story | Article |
+| guide | `data/stories/guides/` | story | HowTo, Guide |
 | person | `data/people/` | data | Person |
 | group | `data/groups/` | data | Organization |
 | project | `data/projects/` | data | Project |
@@ -366,6 +369,14 @@ harvester: ""           # internal workflow
 **Schema**: `schema:Article`, `schema:BlogPosting`
 
 *Note: `author` inherited from file type.*
+
+---
+
+### guide (extends story)
+
+**Purpose**: Implementation guides
+
+**Schema**: `schema:HowTo`, `schema:Guide`
 
 ---
 
@@ -612,8 +623,8 @@ export const ContentTypeSchema = z.enum([
   'resource', 'pattern', 'practice', 'primitive', 'protocol', 'playbook',
   // Question (standalone)
   'question',
-  // Story types  
-  'story', 'study', 'article',
+  // Story types
+  'story', 'study', 'article', 'guide',
   // Data types
   'data', 'person', 'group', 'project', 'place', 'gathering'
 ]);
@@ -625,7 +636,7 @@ export const ContentTypeSchema = z.enum([
 export const RESOURCE_TYPES: ContentType[] = [
   'pattern', 'practice', 'primitive', 'protocol', 'playbook'
 ];
-export const STORY_TYPES: ContentType[] = ['study', 'article'];
+export const STORY_TYPES: ContentType[] = ['study', 'article', 'guide'];
 export const REFERENCE_TYPES: ContentType[] = ['index', 'link', 'tag'];
 export const DATA_TYPES: ContentType[] = [
   'person', 'group', 'project', 'place', 'gathering'
@@ -646,6 +657,7 @@ export const PATH_TYPE_MAP: Record<string, ContentType> = {
   'data/resources/playbooks':   'playbook',
   'data/stories/studies':       'study',
   'data/stories/articles':      'article',
+  'data/stories/guides':        'guide',
   'data/questions':             'question',
   'data/people':                'person',
   'data/groups':                'group',
@@ -768,7 +780,7 @@ For semantic web interoperability:
 5. [ ] Update `article.md` to extend story (remove redundant `author` field)
 6. [ ] Move `question` out of resource hierarchy to extend file directly
 7. [ ] Remove/deprecate `artifact.md`
-8. [ ] Remove/deprecate `guide.md` (use `article` instead)
+8. [ ] Update `guide.md` to extend story (restored as story sub-type)
 
 ### Phase 5: Create new types
 1. [ ] Create `practice.md` (extends resource)

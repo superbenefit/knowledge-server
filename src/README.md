@@ -5,7 +5,7 @@
 **Source:** `src/index.ts`, `src/env.d.ts`
 **Files:** 2
 **Spec reference:** `docs/spec.md` sections 1, 5.1, 8, 9
-**Depends on:** `api` (Hono app), `mcp` (createMcpServer), `consumers` (handleVectorizeQueue), `sync` (verifyWebhookSignature, isExcluded, KnowledgeSyncWorkflow), `types` (GitHubPushEvent)
+**Depends on:** `api` (Hono app), `mcp` (createMcpServer), `consumers` (handleVectorizeQueue), `sync` (verifyWebhookSignature, isExcluded, KnowledgeSyncWorkflow), `types` (GitHubPushEvent), `@superbenefit/porch/auth`, `@superbenefit/porch/security` (SECURITY_HEADERS)
 **Depended on by:** Cloudflare Workers runtime (worker entry point)
 
 ---
@@ -102,7 +102,7 @@ The Hono app is minimal — it only mounts the API sub-application. All middlewa
 9. **Response:** `{ status: 'ok', changed: N, deleted: N }`
 
 #### Dependencies
-- **Internal:** `./api/routes` (api), `./mcp/server` (createMcpServer), `./consumers/vectorize` (handleVectorizeQueue), `./sync/github` (verifyWebhookSignature, isExcluded), `./types/sync` (GitHubPushEvent), `./sync/workflow` (KnowledgeSyncWorkflow — re-export)
+- **Internal:** `./api/routes` (api), `./mcp/server` (createMcpServer), `./consumers/vectorize` (handleVectorizeQueue), `./sync/github` (verifyWebhookSignature, isExcluded), `./types/sync` (GitHubPushEvent), `./sync/workflow` (KnowledgeSyncWorkflow — re-export), `@superbenefit/porch/security` (SECURITY_HEADERS)
 - **External:** `hono` (Hono)
 
 ---

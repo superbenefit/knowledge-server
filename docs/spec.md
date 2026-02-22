@@ -148,10 +148,10 @@ Access control is provided by the porch framework. This section documents the kn
 
 ### 2.2 Porch Types
 
-The knowledge server uses the standard porch types from `src/auth/types.ts`:
+The knowledge server uses the standard porch types from `@superbenefit/porch/auth`:
 
 ```typescript
-// src/auth/types.ts — standard porch types, identical across all SB MCP servers
+// @superbenefit/porch/auth — standard porch types, identical across all SB MCP servers
 
 export type AccessTier = 'open' | 'public' | 'members';
 
@@ -172,7 +172,7 @@ export interface AuthContext {
   identity: Identity | null;
   tier: AccessTier;
   address: `0x${string}` | null;
-  roles: PorchRoles | null;  // see porch spec for PorchRoles definition
+  roles: HatsRole | null;  // see porch spec for HatsRole definition
 }
 ```
 
@@ -181,7 +181,7 @@ export interface AuthContext {
 ### 2.3 Auth Context Resolution
 
 ```typescript
-// src/auth/resolve.ts — standard porch pattern
+// @superbenefit/porch/auth — standard porch pattern
 
 /**
  * Resolve access context from the current request.
@@ -196,7 +196,7 @@ export async function resolveAuthContext(_env: Env): Promise<AuthContext> {
 ### 2.4 Tier Checking
 
 ```typescript
-// src/auth/check.ts — standard porch pattern
+// @superbenefit/porch/auth — standard porch pattern
 
 export function checkTierAccess(
   requiredTier: AccessTier,
@@ -293,7 +293,8 @@ file (root type)
 │
 ├── story (extends file) — narratives
 │   ├── study — case studies
-│   └── article — essays, publications
+│   ├── article — essays, publications
+│   └── guide — implementation guides
 │
 └── data (extends file) — entities/actors
     ├── person — people profiles
@@ -303,7 +304,7 @@ file (root type)
     └── gathering — events, conferences
 ```
 
-**Note**: `question` is a standalone type, not a resource sub-type. Per Simon Grant's knowledge commons ontology, questions "sit at the growing edge of knowledge" — they represent generative unknowns, not commoned artifacts. The `guide` type from spec v0.8 is deprecated; use `article` for written guides.
+**Note**: `question` is a standalone type, not a resource sub-type. Per Simon Grant's knowledge commons ontology, questions "sit at the growing edge of knowledge" — they represent generative unknowns, not commoned artifacts. The `guide` type was restored (extends story, no additional fields) as a distinct content type for implementation guides within the story hierarchy.
 
 ### 3.3 Content Type Enum
 
@@ -318,7 +319,7 @@ export const ContentTypeSchema = z.enum([
   // Question (standalone)
   'question',
   // Story types
-  'story', 'study', 'article',
+  'story', 'study', 'article', 'guide',
   // Data types
   'data', 'person', 'group', 'project', 'place', 'gathering'
 ]);
@@ -332,7 +333,7 @@ export type ContentType = z.infer<typeof ContentTypeSchema>;
 export const RESOURCE_TYPES: ContentType[] = [
   'pattern', 'practice', 'primitive', 'protocol', 'playbook'
 ];
-export const STORY_TYPES: ContentType[] = ['study', 'article'];
+export const STORY_TYPES: ContentType[] = ['study', 'article', 'guide'];
 export const REFERENCE_TYPES: ContentType[] = ['index', 'link', 'tag'];
 export const DATA_TYPES: ContentType[] = [
   'person', 'group', 'project', 'place', 'gathering'
@@ -353,6 +354,7 @@ export const PATH_TYPE_MAP: Record<string, ContentType> = {
   'data/resources/playbooks':   'playbook',
   'data/stories/studies':       'study',
   'data/stories/articles':      'article',
+  'data/stories/guides':        'guide',
   'data/questions':             'question',
   'data/people':                'person',
   'data/groups':                'group',
@@ -462,6 +464,8 @@ export const ArticleSchema = StorySchema.extend({
   harvester: z.string().optional(),
 });
 
+export const GuideSchema = StorySchema;
+
 // Data types
 export const PersonSchema = DataSchema.extend({
   aliases: z.array(z.string()).optional(),
@@ -524,6 +528,7 @@ export const ContentSchema = z.discriminatedUnion('type', [
   QuestionSchema.extend({ type: z.literal('question') }),
   StudySchema.extend({ type: z.literal('study') }),
   ArticleSchema.extend({ type: z.literal('article') }),
+  GuideSchema.extend({ type: z.literal('guide') }),
   PersonSchema.extend({ type: z.literal('person') }),
   GroupSchema.extend({ type: z.literal('group') }),
   ProjectSchema.extend({ type: z.literal('project') }),
@@ -1002,13 +1007,9 @@ knowledge-server/
 │   │       ├── browse.ts
 │   │       ├── retrieve.ts
 │   │       └── index.ts      # registerTools(server, env)
-│   ├── api/
-│   │   ├── app.ts            # Hono app
-│   │   └── routes/v1/
-│   └── auth/
-│       ├── types.ts          # standard porch types
-│       ├── resolve.ts        # standard resolveAuthContext()
-│       └── check.ts          # standard checkTierAccess()
+│   └── api/
+│       ├── app.ts            # Hono app
+│       └── routes/v1/
 ├── wrangler.jsonc
 ├── package.json
 └── tsconfig.json
@@ -1464,6 +1465,10 @@ const cacheHeaders = {
 ```
 
 ### 8.2 Endpoints
+
+**GET /api/v1/health**
+
+Returns `{ status: 'ok' }` — lightweight health check for ops monitoring.
 
 **GET /api/v1/entries**
 
