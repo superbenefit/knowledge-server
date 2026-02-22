@@ -91,6 +91,21 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
 
 const app = new Hono<{ Bindings: Env }>();
 
+// Root info endpoint
+app.get('/', (c) =>
+  c.json({
+    name: 'SuperBenefit Knowledge Server',
+    version: '0.1.0',
+    endpoints: {
+      api: '/api/v1',
+      docs: '/api/v1/docs',
+      openapi: '/api/v1/openapi.json',
+      mcp: '/mcp',
+      health: '/api/v1/health',
+    },
+  }),
+);
+
 // Public REST API (no auth required)
 app.route('/api/v1', api);
 

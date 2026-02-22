@@ -1,4 +1,5 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { Scalar } from '@scalar/hono-api-reference';
 import { cors } from 'hono/cors';
 import { toR2Key } from '../types/storage';
 import type { R2Document } from '../types/storage';
@@ -253,3 +254,18 @@ api.doc('/openapi.json', {
     description: 'Public read-only API for the SuperBenefit knowledge base',
   },
 });
+
+// ---------------------------------------------------------------------------
+// GET /docs — Scalar API docs UI
+// ---------------------------------------------------------------------------
+
+// Override strict CSP for the docs page (Scalar loads from CDN)
+api.use('/docs', async (c, next) => {
+  await next();
+  c.header(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline' https://cdn.jsdelivr.net; font-src https://cdn.jsdelivr.net; connect-src 'self'; img-src 'self' data: https://cdn.jsdelivr.net;",
+  );
+});
+
+api.get('/docs', Scalar({ url: '/api/v1/openapi.json', pageTitle: 'SuperBenefit Knowledge API' }));
