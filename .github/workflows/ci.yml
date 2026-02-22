@@ -23,6 +23,9 @@ jobs:
           cache-dependency-path: knowledge-server/package-lock.json
 
       - run: npm ci
+        working-directory: mcporch
+
+      - run: npm ci
         working-directory: knowledge-server
 
       - run: npm run type-check
