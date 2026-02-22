@@ -12,6 +12,7 @@
 	},
 	"dependencies": {
 		"@hono/zod-openapi": "^1.2.0",
+		"@scalar/hono-api-reference": "^0.9.44",
 		"@superbenefit/porch": "github:superbenefit/mcporch",
 		"agents": "^0.3.6",
 		"hono": "^4.11.9",
