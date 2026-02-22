@@ -33,7 +33,10 @@ api.onError((err, c) => {
 // Security headers middleware
 api.use('*', async (c, next) => {
   await next();
-  c.header('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
+  // Docs page needs a permissive CSP for Scalar CDN — handled by route-specific middleware
+  if (!c.req.path.endsWith('/docs')) {
+    c.header('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
+  }
   c.header('X-Content-Type-Options', 'nosniff');
   c.header('X-Frame-Options', 'DENY');
   c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
