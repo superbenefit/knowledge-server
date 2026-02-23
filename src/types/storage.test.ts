@@ -14,14 +14,38 @@ describe('generateId', () => {
     expect(generateId('a/b/c/d/file.md')).toBe('file');
   });
 
-  it('throws on IDs exceeding 64 bytes', () => {
-    const longName = 'a'.repeat(65) + '.md';
-    expect(() => generateId(longName)).toThrow('64 byte limit');
+  it('lowercases uppercase filenames', () => {
+    expect(generateId('data/concepts/Patterns.md')).toBe('patterns');
+  });
+
+  it('slugifies spaces and special characters', () => {
+    expect(generateId("docs/articles/DAOs aren't things... they are flows..md"))
+      .toBe('daos-aren-t-things-they-are-flows');
+  });
+
+  it('slugifies spaces to hyphens', () => {
+    expect(generateId('data/links/DAO Governance - Challenges, Ideas and Tools.md'))
+      .toBe('dao-governance-challenges-ideas-and-tools');
+  });
+
+  it('truncates IDs exceeding 64 bytes', () => {
+    const id = generateId('modular-politics-toward-a-governance-layer-for-online-communities.md');
+    expect(new TextEncoder().encode(id).length).toBeLessThanOrEqual(64);
+    expect(id.startsWith('modular-politics-toward-a-governance-layer-for-online-communit')).toBe(true);
+  });
+
+  it('does not end with a hyphen after truncation', () => {
+    const id = generateId('modular-politics-toward-a-governance-layer-for-online-communities.md');
+    expect(id.endsWith('-')).toBe(false);
   });
 
   it('accepts IDs at exactly 64 bytes', () => {
     const name = 'a'.repeat(64) + '.md';
     expect(generateId(name)).toBe('a'.repeat(64));
+  });
+
+  it('throws on paths that produce empty IDs', () => {
+    expect(() => generateId('...md')).toThrow('Cannot generate valid ID');
   });
 });
 

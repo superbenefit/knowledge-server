@@ -38,7 +38,7 @@ export async function searchKnowledge(
   const ranked = await rerankResults(query, matches, env);
 
   // Stage 3: Optionally fetch full documents (only for top results)
-  let documents: R2Document[] = [];
+  let documents: Array<R2Document | undefined> = [];
   if (options.includeDocuments) {
     documents = await getDocuments(ranked, env);
   }

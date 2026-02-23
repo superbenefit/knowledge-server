@@ -1,9 +1,11 @@
 /**
  * Bootstrap Sync — Full initial sync of the knowledge base.
  *
- * Fetches all .md files from the GitHub repo, pre-filters to only those
+ * Shallow-clones the GitHub repo locally, pre-filters to only those
  * with publish: true (and draft !== true), then triggers KnowledgeSyncWorkflow
  * instances via `wrangler workflows trigger` in batches.
+ *
+ * Uses a local clone instead of the GitHub API to avoid rate limits.
  *
  * Usage:
  *   npx tsx scripts/bootstrap-sync.ts              # Full sync
@@ -11,19 +13,20 @@
  *   npx tsx scripts/bootstrap-sync.ts --batch-size 100
  *
  * Environment (from .dev.vars or shell):
- *   GITHUB_TOKEN  — GitHub API auth
+ *   GITHUB_TOKEN  — GitHub auth (for private repo cloning)
  *   GITHUB_REPO   — owner/repo format
  *
  * Wrangler auth must be configured (wrangler login or CLOUDFLARE_API_TOKEN).
  */
 
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, rmSync, mkdtempSync } from 'node:fs';
 import { execSync } from 'node:child_process';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { tmpdir } from 'node:os';
 
 // Import sync utilities from src/ — pure functions, Node 22 compatible
-import { fetchFileContent, isExcluded } from '../src/sync/github';
+import { isExcluded } from '../src/sync/github';
 import { parseMarkdown, shouldSync } from '../src/sync/parser';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -33,7 +36,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // ---------------------------------------------------------------------------
 
 const DEFAULT_BATCH_SIZE = 50;
-const CONCURRENCY = 20;
 
 // ---------------------------------------------------------------------------
 // .dev.vars loader
@@ -62,78 +64,36 @@ function getEnv(key: string, devVars: Record<string, string>): string {
 }
 
 // ---------------------------------------------------------------------------
-// GitHub API
+// Local clone operations
 // ---------------------------------------------------------------------------
 
-interface GitTreeEntry {
-  path: string;
-  mode: string;
-  type: 'blob' | 'tree';
-  sha: string;
-  size?: number;
-}
+function cloneRepo(repo: string, token: string): string {
+  const cloneDir = mkdtempSync(join(tmpdir(), 'kb-bootstrap-'));
+  console.log(`Cloning ${repo} (shallow, depth=1)...`);
 
-interface GitTreeResponse {
-  sha: string;
-  tree: GitTreeEntry[];
-  truncated: boolean;
-}
-
-interface GitRefResponse {
-  object: { sha: string };
-}
-
-async function githubGet<T>(url: string, token: string): Promise<T> {
-  const resp = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.github.v3+json',
-      'User-Agent': 'superbenefit-knowledge-server-bootstrap',
-    },
-  });
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`GitHub API ${resp.status}: ${text}`);
+  try {
+    execSync(
+      `git clone --depth 1 --branch main "https://x-access-token:${token}@github.com/${repo}.git" "${cloneDir}"`,
+      { stdio: 'pipe' },
+    );
+  } catch (err: unknown) {
+    const msg = (err as any)?.stderr?.toString() || (err as Error)?.message || 'Unknown error';
+    // Sanitize error message to avoid leaking the token
+    const safe = msg.replace(token, '***');
+    throw new Error(`Failed to clone repository: ${safe}`);
   }
-  return resp.json() as Promise<T>;
+
+  return cloneDir;
 }
 
-async function getMainCommitSha(repo: string, token: string): Promise<string> {
-  const ref = await githubGet<GitRefResponse>(
-    `https://api.github.com/repos/${repo}/git/ref/heads/main`,
-    token,
-  );
-  return ref.object.sha;
+function getCommitSha(cloneDir: string): string {
+  return execSync('git rev-parse HEAD', { cwd: cloneDir, encoding: 'utf-8' }).trim();
 }
 
-async function getFileTree(repo: string, commitSha: string, token: string): Promise<GitTreeEntry[]> {
-  const tree = await githubGet<GitTreeResponse>(
-    `https://api.github.com/repos/${repo}/git/trees/${commitSha}?recursive=1`,
-    token,
-  );
-  if (tree.truncated) {
-    console.warn('Warning: GitHub tree response was truncated (>100k entries). Some files may be missing.');
-  }
-  return tree.tree;
-}
-
-// ---------------------------------------------------------------------------
-// Parallel execution with concurrency limit
-// ---------------------------------------------------------------------------
-
-async function parallelForEach<T>(
-  items: T[],
-  fn: (item: T, index: number) => Promise<void>,
-  concurrency: number,
-): Promise<void> {
-  let index = 0;
-  async function worker() {
-    while (index < items.length) {
-      const i = index++;
-      await fn(items[i], i);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
+function findMdFiles(cloneDir: string): string[] {
+  return (readdirSync(cloneDir, { recursive: true, encoding: 'utf-8' }) as string[])
+    .map((f) => f.replace(/\\/g, '/')) // Normalize Windows backslashes
+    .filter((f) => f.endsWith('.md') && !f.startsWith('.git/') && !isExcluded(f));
 }
 
 // ---------------------------------------------------------------------------
@@ -159,6 +119,8 @@ function triggerWorkflow(changedFiles: string[], commitSha: string): void {
   execSync(`npx wrangler workflows trigger knowledge-sync-workflow '${escaped}'`, {
     stdio: 'inherit',
     cwd: resolve(__dirname, '..'),
+    // Force bash on Windows — cmd.exe can't handle JSON with double quotes in args
+    shell: process.platform === 'win32' ? 'bash' : undefined,
   });
 }
 
@@ -201,97 +163,92 @@ async function main() {
 
   console.log(`Repository: ${repo}`);
   console.log(`Batch size: ${batchSize}`);
-  console.log(`Concurrency: ${CONCURRENCY}`);
   if (dryRun) console.log('DRY RUN — no workflows will be triggered');
   console.log();
 
-  // Step 1: Get latest commit SHA
-  console.log('Fetching latest commit SHA from main...');
-  const commitSha = await getMainCommitSha(repo, token);
-  console.log(`Commit: ${commitSha}\n`);
+  // Step 1: Shallow clone the repo (avoids GitHub API rate limits)
+  const cloneDir = cloneRepo(repo, token);
 
-  // Step 2: Fetch full file tree
-  console.log('Fetching file tree...');
-  const tree = await getFileTree(repo, commitSha, token);
-  const allFiles = tree.filter((e) => e.type === 'blob').map((e) => e.path);
-  console.log(`Total files in repo: ${allFiles.length}`);
+  try {
+    const commitSha = getCommitSha(cloneDir);
+    console.log(`Commit: ${commitSha}\n`);
 
-  // Step 3: Filter to .md files, exclude non-content paths
-  const candidates = allFiles.filter((f) => f.endsWith('.md') && !isExcluded(f));
-  console.log(`Candidate .md files: ${candidates.length}`);
+    // Step 2: Find .md files via local directory walk
+    const candidates = findMdFiles(cloneDir);
+    console.log(`Candidate .md files: ${candidates.length}`);
 
-  if (candidates.length === 0) {
-    console.log('No candidate files found.');
-    return;
-  }
+    if (candidates.length === 0) {
+      console.log('No candidate files found.');
+      return;
+    }
 
-  // Step 4: Pre-filter — fetch each file and check shouldSync()
-  console.log(`\nPre-filtering: fetching frontmatter for ${candidates.length} files (${CONCURRENCY} concurrent)...`);
-  const qualifying: string[] = [];
-  let skipped = 0;
-  let errors = 0;
-  let checked = 0;
+    // Step 3: Pre-filter — read each file from disk and check shouldSync()
+    console.log(`\nPre-filtering: checking frontmatter for ${candidates.length} files...`);
+    const qualifying: string[] = [];
+    let skipped = 0;
+    let errors = 0;
 
-  await parallelForEach(candidates, async (filePath) => {
-    try {
-      const raw = await fetchFileContent(filePath, commitSha, repo, token);
-      const parsed = parseMarkdown(raw);
+    for (const filePath of candidates) {
+      try {
+        const fullPath = resolve(cloneDir, filePath);
+        const raw = readFileSync(fullPath, 'utf-8');
+        const parsed = parseMarkdown(raw);
 
-      if (parsed.parseError) {
-        skipped++;
-      } else if (!shouldSync(parsed.frontmatter)) {
-        skipped++;
-      } else {
-        qualifying.push(filePath);
+        if (parsed.parseError) {
+          skipped++;
+        } else if (!shouldSync(parsed.frontmatter)) {
+          skipped++;
+        } else {
+          qualifying.push(filePath);
+        }
+      } catch (err) {
+        errors++;
+        console.error(`  Error reading ${filePath}: ${err instanceof Error ? err.message : err}`);
       }
-    } catch (err) {
-      errors++;
-      console.error(`  Error fetching ${filePath}: ${err instanceof Error ? err.message : err}`);
     }
 
-    checked++;
-    if (checked % 100 === 0) {
-      console.log(`  ... checked ${checked}/${candidates.length}`);
+    console.log(`\nPre-filter complete:`);
+    console.log(`  Qualifying (publish: true): ${qualifying.length}`);
+    console.log(`  Skipped (unpublished/draft/parse error): ${skipped}`);
+    if (errors > 0) console.log(`  Errors: ${errors}`);
+
+    if (qualifying.length === 0) {
+      console.log('\nNo qualifying files to sync.');
+      return;
     }
-  }, CONCURRENCY);
 
-  console.log(`\nPre-filter complete:`);
-  console.log(`  Qualifying (publish: true): ${qualifying.length}`);
-  console.log(`  Skipped (unpublished/draft/parse error): ${skipped}`);
-  if (errors > 0) console.log(`  Errors: ${errors}`);
+    // Step 4: Batch and trigger
+    const batches = chunk(qualifying, batchSize);
+    console.log(`\nBatches: ${batches.length} (${batchSize} files each)\n`);
 
-  if (qualifying.length === 0) {
-    console.log('\nNo qualifying files to sync.');
-    return;
+    if (dryRun) {
+      console.log('Files that would be synced:');
+      for (const file of qualifying) {
+        console.log(`  ${file}`);
+      }
+      console.log(`\nDry run complete. ${qualifying.length} qualifying files in ${batches.length} batches.`);
+      return;
+    }
+
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      console.log(`Triggering batch ${i + 1}/${batches.length} (${batch.length} files)...`);
+      try {
+        triggerWorkflow(batch, commitSha);
+      } catch (err) {
+        console.error(`Failed to trigger batch ${i + 1}:`, err instanceof Error ? err.message : err);
+        console.error('Stopping. Remaining batches were not triggered.');
+        process.exit(1);
+      }
+    }
+
+    console.log(`\nBootstrap complete: triggered ${batches.length} workflows for ${qualifying.length} files.`);
+    console.log('Monitor progress: npx wrangler workflows instances list knowledge-sync-workflow');
+  } finally {
+    // Clean up clone directory
+    console.log('\nCleaning up temporary clone...');
+    rmSync(cloneDir, { recursive: true, force: true });
   }
-
-  // Step 5: Batch and trigger
-  const batches = chunk(qualifying, batchSize);
-  console.log(`\nBatches: ${batches.length} (${batchSize} files each)\n`);
-
-  if (dryRun) {
-    console.log('Files that would be synced:');
-    for (const file of qualifying) {
-      console.log(`  ${file}`);
-    }
-    console.log(`\nDry run complete. ${qualifying.length} qualifying files in ${batches.length} batches.`);
-    return;
-  }
-
-  for (let i = 0; i < batches.length; i++) {
-    const batch = batches[i];
-    console.log(`Triggering batch ${i + 1}/${batches.length} (${batch.length} files)...`);
-    try {
-      triggerWorkflow(batch, commitSha);
-    } catch (err) {
-      console.error(`Failed to trigger batch ${i + 1}:`, err instanceof Error ? err.message : err);
-      console.error('Stopping. Remaining batches were not triggered.');
-      process.exit(1);
-    }
-  }
-
-  console.log(`\nBootstrap complete: triggered ${batches.length} workflows for ${qualifying.length} files.`);
-  console.log('Monitor progress: npx wrangler workflows instances list knowledge-sync-workflow');
 }
 
 main().catch((err) => {

@@ -12,20 +12,18 @@ import { toR2Key } from '../types';
 export async function getDocuments(
   results: RerankResult[],
   env: Env,
-): Promise<R2Document[]> {
-  const docs = await Promise.all(
+): Promise<Array<R2Document | undefined>> {
+  return Promise.all(
     results.map(async (result) => {
       const path = result.metadata.path;
-      if (!path) return null;
+      if (!path) return undefined;
 
       const obj = await env.KNOWLEDGE.get(path);
-      if (!obj) return null;
+      if (!obj) return undefined;
 
       return obj.json() as Promise<R2Document>;
     }),
   );
-
-  return docs.filter((d): d is R2Document => d !== null);
 }
 
 /**

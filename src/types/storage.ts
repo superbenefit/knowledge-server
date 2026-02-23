@@ -43,7 +43,7 @@ export const VectorizeMetadataSchema = z.object({
   // Indexed fields (6 of 10 max) — ~200 bytes
   contentType: z.string(),
   group: z.string(),
-  tags: z.string(),            // Comma-separated
+  tags: z.array(z.string()),   // Stored as array, filtered post-query
   release: z.string(),
   status: z.string(),
   date: z.number(),            // Unix timestamp ms
@@ -79,17 +79,31 @@ export function truncateForMetadata(content: string): string {
  * Generate document ID from file path.
  * Example: "artifacts/patterns/cell-governance.md" → "cell-governance"
  *
+ * Slugifies the filename: lowercase, non-alphanumeric → hyphens,
+ * collapsed and trimmed. Truncated to 64 bytes (Vectorize limit).
+ *
  * Constraints:
  * - Max 64 bytes (Vectorize limit)
- * - URL-safe characters only
+ * - URL-safe characters only (a-z, 0-9, hyphens)
  * - Unique within contentType namespace
  */
 export function generateId(path: string): string {
   const filename = path.split('/').pop() || path;
-  const id = filename.replace(/\.md$/, '');
+  let id = filename
+    .replace(/\.md$/, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-|-$/g, '');
 
-  if (new TextEncoder().encode(id).length > VECTORIZE_LIMITS.VECTOR_ID_MAX_BYTES) {
-    throw new Error(`ID exceeds 64 byte limit: ${id}`);
+  // Truncate to 64 bytes (Vectorize limit)
+  while (new TextEncoder().encode(id).length > VECTORIZE_LIMITS.VECTOR_ID_MAX_BYTES) {
+    id = id.slice(0, -1);
+  }
+  id = id.replace(/-$/, '');
+
+  if (!id) {
+    throw new Error(`Cannot generate valid ID from path: ${path}`);
   }
 
   return id;

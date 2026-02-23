@@ -18,16 +18,23 @@ import {
 // R2 event notification schema (validated before processing)
 // ---------------------------------------------------------------------------
 
+const CREATE_ACTIONS = ['PutObject', 'CopyObject', 'CompleteMultipartUpload'] as const;
+const DELETE_ACTIONS = ['DeleteObject', 'LifecycleDeletion'] as const;
+
 const R2EventNotificationSchema = z.object({
   account: z.string(),
+  action: z.enum([...CREATE_ACTIONS, ...DELETE_ACTIONS]),
   bucket: z.string(),
   object: z.object({
     key: z.string(),
-    size: z.number(),
-    eTag: z.string(),
+    size: z.number().optional(),   // absent on delete events
+    eTag: z.string().optional(),   // absent on delete events
   }),
-  eventType: z.enum(['object-create', 'object-delete']),
   eventTime: z.string(),
+  copySource: z.object({
+    bucket: z.string(),
+    object: z.string(),
+  }).optional(),
 });
 
 type R2EventNotification = z.infer<typeof R2EventNotificationSchema>;
@@ -59,7 +66,7 @@ export async function handleVectorizeQueue(
         msg.ack(); // Don't retry malformed messages
         continue;
       }
-      const { object, eventType } = parseResult.data;
+      const { object, action } = parseResult.data;
 
       // Only process objects under the content/ prefix
       if (!object.key.startsWith('content/')) {
@@ -67,7 +74,9 @@ export async function handleVectorizeQueue(
         continue;
       }
 
-      if (eventType === 'object-create') {
+      const isCreate = (CREATE_ACTIONS as readonly string[]).includes(action);
+
+      if (isCreate) {
         const r2Object = await env.KNOWLEDGE.get(object.key);
         if (!r2Object) {
           // Object was already deleted between event and processing — nothing to do
@@ -76,7 +85,7 @@ export async function handleVectorizeQueue(
         }
         const doc: R2Document = await r2Object.json();
         await updateVectorize(doc, env);
-      } else if (eventType === 'object-delete') {
+      } else {
         const id = extractIdFromKey(object.key);
         await deleteFromVectorize(id, env);
       }
@@ -129,8 +138,8 @@ export async function updateVectorize(
     contentType: doc.contentType,
     group: (doc.metadata.group as string) || '',
     tags: Array.isArray(doc.metadata.tags)
-      ? (doc.metadata.tags as string[]).join(',')
-      : '',
+      ? (doc.metadata.tags as string[])
+      : [],
     release: (doc.metadata.release as string) || '',
     status: (doc.metadata.status as string) || '',
     date: doc.metadata.date

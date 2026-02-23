@@ -18,14 +18,18 @@ export type SyncParams = z.infer<typeof SyncParamsSchema>;
 
 export interface R2EventNotification {
   account: string;
+  action: 'PutObject' | 'CopyObject' | 'CompleteMultipartUpload' | 'DeleteObject' | 'LifecycleDeletion';
   bucket: string;
   object: {
     key: string;
-    size: number;
-    eTag: string;
+    size?: number;    // absent on delete events
+    eTag?: string;    // absent on delete events
   };
-  eventType: 'object-create' | 'object-delete';
   eventTime: string;
+  copySource?: {
+    bucket: string;
+    object: string;
+  };
 }
 
 // ---------------------------------------------------------------------------
