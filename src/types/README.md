@@ -224,7 +224,7 @@ The three tiers represent increasing access levels:
 
 #### Internal Logic
 
-The `SearchFiltersSchema` is shared between REST API and MCP tools — both use the same filter vocabulary. The `tags` field accepts an array of strings, which maps to the comma-separated tags stored in Vectorize metadata via `$in` filter semantics.
+The `SearchFiltersSchema` is shared between REST API and MCP tools — both use the same filter vocabulary. The `tags` field accepts an array of strings; tags are stored as `string[]` in Vectorize metadata and filtered post-query in `searchWithFilters()` (Vectorize's string index can't do element-wise matching on arrays).
 
 #### Dependencies
 - **Internal:** `./content` (ContentTypeSchema), `./storage` (R2DocumentSchema, VectorizeMetadataSchema)
@@ -271,7 +271,7 @@ The `SearchFiltersSchema` is shared between REST API and MCP tools — both use 
 |-------|------|---------|-------------|
 | `contentType` | string | Yes | Content type for filtering |
 | `group` | string | Yes | Working group / cell |
-| `tags` | string | Yes | Comma-separated tag list |
+| `tags` | string[] | Yes | Tag array (filtered post-query in JS) |
 | `release` | string | Yes | Creative release identifier |
 | `status` | string | Yes | Status (for questions, projects) |
 | `date` | number | Yes | Unix timestamp in milliseconds |
@@ -284,7 +284,7 @@ The `SearchFiltersSchema` is shared between REST API and MCP tools — both use 
 
 **`truncateForMetadata()`** clips content to 8000 characters at the nearest word boundary, appending `...` if truncated. This leaves approximately 2 KiB for the other metadata fields within the 10 KiB limit.
 
-**`generateId()`** extracts the filename without extension from a path (e.g., `artifacts/patterns/cell-governance.md` → `cell-governance`). Throws if the resulting ID exceeds 64 bytes (Vectorize limit).
+**`generateId()`** extracts the filename from a path, strips `.md`, slugifies (lowercase, non-alphanumeric to hyphens, collapse/trim), and truncates to 64 bytes (Vectorize limit). Examples: `cell-governance.md` → `cell-governance`, `DAOs aren't things... they are flows..md` → `daos-aren-t-things-they-are-flows`. Throws if the resulting ID is empty.
 
 **R2 key convention:** `content/{contentType}/{id}.json` — e.g., `content/pattern/cell-governance.json`. This allows both individual lookups and prefix-based listing by content type.
 
@@ -304,13 +304,13 @@ The `SearchFiltersSchema` is shared between REST API and MCP tools — both use 
 |--------|------|-------------|
 | `SyncParamsSchema` | Zod object | Workflow input: `{ changedFiles: string[], deletedFiles: string[], commitSha: string }` |
 | `SyncParams` | Type | Inferred type |
-| `R2EventNotification` | Interface | R2 bucket event: `{ account, bucket, object: { key, size, eTag }, eventType, eventTime }` |
+| `R2EventNotification` | Interface | R2 bucket event: `{ account, action, bucket, object: { key, size?, eTag? }, eventTime, copySource? }` |
 | `GitHubPushEvent` | Interface | Subset of GitHub push webhook: `{ ref, after, commits: [{ added, modified, removed }] }` |
 | `ParsedMarkdown` | Interface | `{ frontmatter: Record<string, unknown>, body: string }` |
 
 #### Internal Logic
 
-`R2EventNotification.eventType` is limited to `'object-create' | 'object-delete'` — these are the only events the queue consumer handles.
+`R2EventNotification.action` uses the actual Cloudflare R2 event notification action names: `'PutObject' | 'CopyObject' | 'CompleteMultipartUpload'` for creates and `'DeleteObject' | 'LifecycleDeletion'` for deletes. The `object.size` and `object.eTag` fields are optional (absent on delete events). The `copySource` field is present only for `CopyObject` actions.
 
 `GitHubPushEvent` captures only the fields used by `handleWebhook()`: `ref` for branch filtering, `after` for the commit SHA, and `commits` for file change lists.
 
