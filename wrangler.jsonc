@@ -53,6 +53,10 @@
 		}
 	],
 	"queues": {
+		// R2 event notifications feed this queue but must be configured externally:
+		// npx wrangler r2 bucket notification create superbenefit-knowledge \
+		//   --event-type object-create --event-type object-delete \
+		//   --queue superbenefit-knowledge-sync
 		"consumers": [
 			{
 				"queue": "superbenefit-knowledge-sync",

@@ -1,31 +1,38 @@
 # Index (Entry Point)
 
-> Main worker entry point — routes requests across MCP, REST API, and GitHub webhooks, and exports the queue consumer.
+> WorkerEntrypoint class — HTTP routing, queue consumer, webhook handler, and RPC methods for inter-Worker service bindings.
 
 **Source:** `src/index.ts`, `src/env.d.ts`
 **Files:** 2
-**Spec reference:** `docs/spec.md` sections 1, 5.1, 8, 9
-**Depends on:** `api` (Hono app), `mcp` (createMcpServer), `consumers` (handleVectorizeQueue), `sync` (verifyWebhookSignature, isExcluded, KnowledgeSyncWorkflow), `types` (GitHubPushEvent), `@superbenefit/porch/auth`, `@superbenefit/porch/security` (SECURITY_HEADERS)
-**Depended on by:** Cloudflare Workers runtime (worker entry point)
+**Spec reference:** `docs/spec.md` sections 1, 5.1, 8, 9; `tmp/worker-rpc.md` v0.17
+**Depends on:** `api` (Hono app), `mcp` (createMcpServer), `consumers` (handleVectorizeQueue), `retrieval` (searchKnowledge, getDocument), `sync` (verifyWebhookSignature, isExcluded, KnowledgeSyncWorkflow), `types` (GitHubPushEvent, RPC types), `@superbenefit/porch/security` (SECURITY_HEADERS)
+**Depended on by:** Cloudflare Workers runtime (worker entry point), consumer Workers via service bindings
 
 ---
 
 ## Overview
 
-The index module is the single entry point for the Cloudflare Worker. It handles two runtime entrypoints: `fetch` (HTTP requests) and `queue` (queue message batches). The fetch handler implements a three-way routing split that directs requests to specialized handlers before they reach Hono's general-purpose router.
+The index module exports `KnowledgeServer`, a `WorkerEntrypoint<Env>` class that serves as the single entry point for the Cloudflare Worker. The class provides three categories of interface:
 
-The routing split is intentional — MCP requests bypass Hono entirely to avoid middleware interference (MCP uses SSE and has its own CORS handling), while the REST API benefits from Hono's middleware stack (CORS, validation, OpenAPI generation). The webhook handler is also routed directly to avoid unnecessary middleware processing.
+1. **HTTP handlers** — `fetch()` implements a three-way routing split (MCP, webhook, Hono REST API) and `handleWebhook()` is a private class method for GitHub push events with `ctx.waitUntil()` for fire-and-forget workflow creation.
+2. **Queue consumer** — `queue()` delegates to `handleVectorizeQueue` for R2 event processing.
+3. **RPC methods** — Five public methods (`searchKnowledge`, `getDocument`, `listGroups`, `listReleases`, `defineTerm`) callable via service bindings from other Workers with zero HTTP overhead.
 
-The file also contains the `handleWebhook()` function, which validates GitHub push events and triggers the sync workflow. Finally, it re-exports `KnowledgeSyncWorkflow` at the module level so Cloudflare's runtime can discover it via the `class_name` configuration in `wrangler.jsonc`.
+The routing split is intentional — MCP requests bypass Hono entirely to avoid middleware interference (MCP uses SSE and has its own CORS handling), while the REST API benefits from Hono's middleware stack (CORS, validation, OpenAPI generation).
+
+The MCP handler is created per-request inside `fetch()` because `createMcpServer(this.env)` requires the class instance's `this.env`, which is unavailable at module scope. This is the correct pattern for `WorkerEntrypoint`.
+
+The file also re-exports `KnowledgeSyncWorkflow` at the module level so Cloudflare's runtime can discover it via the `class_name` configuration in `wrangler.jsonc`.
 
 ## Data Flow Diagram
 
 ```mermaid
 graph TD
-    Request["Incoming Request"] --> Fetch["export default { fetch }"]
+    Request["Incoming HTTP Request"] --> Fetch["KnowledgeServer.fetch()"]
+    RPC["Service Binding Call"] --> RPCMethods["RPC Methods<br/>searchKnowledge, getDocument,<br/>listGroups, listReleases, defineTerm"]
 
     Fetch -->|"/mcp" or "/mcp/*"| MCP["createMcpHandler()<br/>Direct — bypasses Hono"]
-    Fetch -->|"POST /webhook"| WH["handleWebhook()<br/>Direct — bypasses Hono"]
+    Fetch -->|"POST /webhook"| WH["this.handleWebhook()<br/>Private class method"]
     Fetch -->|everything else| Hono["Hono Router"]
 
     Hono -->|"/api/v1/*"| API["api routes<br/>(see api/)"]
@@ -36,74 +43,81 @@ graph TD
     Verify -->|valid| Branch{"ref === refs/heads/main?"}
     Branch -->|no| Ignore["{ status: 'ignored' }"]
     Branch -->|yes| Collect["Collect .md files<br/>filter excluded<br/>deduplicate"]
-    Collect --> Trigger["env.SYNC_WORKFLOW.create()"]
+    Collect --> Trigger["ctx.waitUntil(<br/>SYNC_WORKFLOW.create())"]
 
-    Queue["Queue Messages"] --> QueueHandler["export default { queue }<br/>handleVectorizeQueue()"]
+    Queue["Queue Messages"] --> QueueHandler["KnowledgeServer.queue()<br/>handleVectorizeQueue()"]
 ```
 
 ## File-by-File Reference
 
 ### `index.ts`
 
-**Purpose:** Main worker module — HTTP routing, webhook handling, and runtime exports.
+**Purpose:** WorkerEntrypoint class — HTTP routing, webhook handling, queue consumer, and RPC methods.
 
 #### Exports
 
 | Export | Kind | Description |
 |--------|------|-------------|
 | `KnowledgeSyncWorkflow` | Re-export (class) | From `./sync/workflow` — required for wrangler class_name discovery |
-| `default` | Object | `{ fetch, queue }` — Worker module entry point |
+| `default` | Class | `KnowledgeServer extends WorkerEntrypoint<Env>` — worker entry point |
+
+#### Class Methods
+
+| Method | Visibility | Description |
+|--------|-----------|-------------|
+| `fetch(request)` | public | HTTP routing — rate limiting, MCP, webhook, Hono REST API |
+| `queue(batch)` | public | Queue consumer — delegates to `handleVectorizeQueue` |
+| `handleWebhook(request)` | private | GitHub push event processing with `ctx.waitUntil()` |
+| `searchKnowledge(params)` | public (RPC) | Three-stage search pipeline — returns `{ items, total }` |
+| `getDocument(params)` | public (RPC) | Get document by contentType + id — returns `R2Document \| null` |
+| `listGroups()` | public (RPC) | List all groups/cells — returns `{ groups }` |
+| `listReleases()` | public (RPC) | List creative releases — returns `{ releases }` |
+| `defineTerm(params)` | public (RPC) | Get term definition — returns `{ term, definition }` |
 
 #### Internal Logic
 
-**`fetch` handler — Three-way routing split:**
+**`fetch()` — Three-way routing split:**
 
 ```
 Request URL pathname
-├── /mcp or /mcp/* → handler(request, env, ctx)  (from createMcpHandler)
-├── POST /webhook  → handleWebhook(request, env)
-└── *              → app.fetch(request, env, ctx)  (Hono)
+├── /mcp or /mcp/* → createMcpHandler (per-request, needs this.env)
+├── POST /webhook  → this.handleWebhook(request)
+└── *              → app.fetch(request, this.env, this.ctx)  (Hono)
 ```
 
-1. **MCP path** (`/mcp` or `/mcp/*`): Creates a new `McpServer` via `createMcpServer(env)` and wraps it with `createMcpHandler()`, bypassing Hono. This is critical because MCP uses its own transport (SSE/Streamable HTTP) and CORS configuration.
+1. **MCP path** (`/mcp` or `/mcp/*`): Creates a new `McpServer` via `createMcpServer(this.env)` and wraps it with `createMcpHandler()`, bypassing Hono. Created per-request because `this.env` is unavailable at module scope.
 
-2. **Webhook path** (`POST /webhook`): Delegates to `handleWebhook()` for GitHub push event processing.
+2. **Webhook path** (`POST /webhook`): Delegates to private `handleWebhook()` class method, which has access to `this.ctx.waitUntil()` for fire-and-forget workflow creation.
 
 3. **Everything else**: Goes through Hono, which mounts the REST API at `/api/v1`.
 
-**`queue` handler:**
+**`handleWebhook()` — GitHub push event processing (private class method):**
 
-Set to `handleVectorizeQueue` from `src/consumers/vectorize.ts`. Processes R2 event notifications from the queue.
+1. Verify webhook signature via `x-hub-signature-256` header. Returns 403 if invalid.
+2. Replay protection via delivery ID nonce (24h TTL in KV).
+3. Branch filter: only processes `refs/heads/main`.
+4. Collect changed/deleted `.md` files from all commits, deduplicate.
+5. Fire-and-forget: `this.ctx.waitUntil(SYNC_WORKFLOW.create(...))` — responds immediately.
 
-**Hono app setup:**
+**RPC methods** — thin wrappers over existing retrieval/MCP functions with input validation:
+
+- `searchKnowledge` → validates query (non-empty) and limit (1-20), calls `searchKnowledge()` from retrieval
+- `getDocument` → validates contentType + id required, calls `getDocument()` from retrieval
+- `listGroups` / `listReleases` → no params, delegates to `mcp/tools` helpers
+- `defineTerm` → validates term (non-empty), calls `getTermDefinition()` from `mcp/tools`
+
+**Hono app** (module scope):
 
 ```typescript
 const app = new Hono<{ Bindings: Env }>();
 app.route('/api/v1', api);
 ```
 
-The Hono app is minimal — it only mounts the API sub-application. All middleware (CORS, error handling) is defined within the API module itself.
-
----
-
-**`handleWebhook()` — GitHub push event processing:**
-
-1. **Read body:** `await request.text()` (needed for both signature verification and JSON parsing)
-2. **Verify signature:** Reads `x-hub-signature-256` header, calls `verifyWebhookSignature()`. Returns 403 if invalid.
-3. **Parse payload:** `JSON.parse(body)` as `GitHubPushEvent`
-4. **Branch filter:** Only processes pushes to `refs/heads/main`. Returns `{ status: 'ignored', reason: 'not main branch' }` otherwise.
-5. **Collect files:**
-   - Changed files: flattens `added` + `modified` from all commits, filters for `.md` extension and not excluded
-   - Deleted files: flattens `removed` from all commits, filters for `.md` extension
-   - Note: deleted files are NOT filtered through `isExcluded()` (excluded files that were previously synced should still be deletable)
-6. **Deduplicate:** Uses `Set` to remove duplicates (a file may appear in multiple commits within the same push)
-7. **Short-circuit:** If no markdown files changed, returns `{ status: 'ignored', reason: 'no markdown files changed' }`
-8. **Trigger workflow:** `env.SYNC_WORKFLOW.create({ params: { changedFiles, deletedFiles, commitSha } })`
-9. **Response:** `{ status: 'ok', changed: N, deleted: N }`
+The Hono app is minimal — it only mounts the API sub-application. All middleware (CORS, error handling) is defined within the API module itself. Receives `this.env` and `this.ctx` per-request via `app.fetch()`.
 
 #### Dependencies
-- **Internal:** `./api/routes` (api), `./mcp/server` (createMcpServer), `./consumers/vectorize` (handleVectorizeQueue), `./sync/github` (verifyWebhookSignature, isExcluded), `./types/sync` (GitHubPushEvent), `./sync/workflow` (KnowledgeSyncWorkflow — re-export), `@superbenefit/porch/security` (SECURITY_HEADERS)
-- **External:** `hono` (Hono)
+- **Internal:** `./api/routes` (api), `./mcp/server` (createMcpServer), `./mcp/tools` (listGroups, listReleases, getTermDefinition), `./consumers/vectorize` (handleVectorizeQueue), `./retrieval` (searchKnowledge, getDocument), `./sync/github` (verifyWebhookSignature, isExcluded), `./types/sync` (GitHubPushEvent), `./types/rpc` (RPC param/result types), `./sync/workflow` (KnowledgeSyncWorkflow — re-export), `@superbenefit/porch/security` (SECURITY_HEADERS)
+- **External:** `hono` (Hono), `cloudflare:workers` (WorkerEntrypoint), `agents/mcp` (createMcpHandler)
 
 ---
 
@@ -147,6 +161,12 @@ Both declarations are identical and must be kept in sync. This dual-declaration 
 |------|--------|-------------|
 | `Env` | `env.d.ts` | All Cloudflare bindings |
 | `GitHubPushEvent` | `types/sync.ts` | Webhook payload shape |
+| `SearchKnowledgeParams` | `types/rpc.ts` | RPC search input |
+| `SearchKnowledgeResult` | `types/rpc.ts` | RPC search output |
+| `GetDocumentParams` | `types/rpc.ts` | RPC get document input |
+| `DefineTermParams` | `types/rpc.ts` | RPC define term input |
+| `ListGroupsResult` | `types/rpc.ts` | RPC list groups output |
+| `ListReleasesResult` | `types/rpc.ts` | RPC list releases output |
 
 ## Cloudflare Bindings Used
 
@@ -183,8 +203,9 @@ All bindings are used by this module or the modules it delegates to. See the Com
 | Invalid webhook signature | 403 `Invalid signature` |
 | Non-main branch push | 200 `{ status: 'ignored', reason: 'not main branch' }` |
 | No markdown changes | 200 `{ status: 'ignored', reason: 'no markdown files changed' }` |
-| Workflow creation fails | Exception propagates (500) |
+| Workflow creation fails | Fire-and-forget via `waitUntil` — does not affect response |
 | Unmatched route | Hono's default 404 handler |
+| RPC invalid params | `throw new Error('RPC methodName: ...')` — propagated to caller |
 
 ## Extension Points
 

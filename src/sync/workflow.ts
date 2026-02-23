@@ -107,12 +107,19 @@ export class KnowledgeSyncWorkflow extends WorkflowEntrypoint<Env, SyncParams> {
 
     // Process deleted files
     for (const filePath of deletedFiles) {
-      await step.do(`delete-${filePath}`, async () => {
-        const contentType = inferContentType(filePath);
-        const id = generateId(filePath);
-        await this.env.KNOWLEDGE.delete(toR2Key(contentType, id));
-        console.log(`Deleted ${filePath} (${contentType}/${id}) — removed from Git`);
-      });
+      await step.do(
+        `delete-${filePath}`,
+        {
+          retries: { limit: 3, delay: '10 seconds', backoff: 'exponential' },
+          timeout: '30 seconds',
+        },
+        async () => {
+          const contentType = inferContentType(filePath);
+          const id = generateId(filePath);
+          await this.env.KNOWLEDGE.delete(toR2Key(contentType, id));
+          console.log(`Deleted ${filePath} (${contentType}/${id}) — removed from Git`);
+        },
+      );
     }
   }
 }

@@ -18,11 +18,18 @@ Sync Layer: Webhook → Workflow → R2 → Event → Queue → Vectorize
          │
          ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  Knowledge Server (Cloudflare Worker)                       │
+│  KnowledgeServer extends WorkerEntrypoint<Env>              │
 │                                                             │
-│  /api/v1/*           REST API (Hono + OpenAPI)              │
-│  /mcp                MCP Server (Tools, Resources, Prompts) │
-│  /webhook            GitHub push events                     │
+│  HTTP:                                                      │
+│    /api/v1/*         REST API (Hono + OpenAPI)              │
+│    /mcp              MCP Server (Tools, Resources, Prompts) │
+│    /webhook          GitHub push events                     │
+│                                                             │
+│  RPC (service bindings — zero-latency inter-Worker calls):  │
+│    searchKnowledge · getDocument · listGroups               │
+│    listReleases · defineTerm                                │
+│                                                             │
+│  Queue: R2 event notifications → Vectorize indexing         │
 │                                                             │
 │  Access: resolveAuthContext() → checkTierAccess()           │
 │  Phase 1: All tools Open tier (no auth)                     │
@@ -69,9 +76,8 @@ curl -I -X OPTIONS http://localhost:8788/api/v1/entries \
 
 ```
 src/
-├── index.ts              # Entry point + routing (MCP, REST, webhook)
-├── types/                # Type system + content ontology
-├── auth/                 # Porch access control framework
+├── index.ts              # WorkerEntrypoint class (HTTP, queue, RPC)
+├── types/                # Type system + content ontology + RPC types
 ├── api/                  # REST API routes + OpenAPI
 ├── mcp/                  # MCP server (tools, resources, prompts)
 ├── retrieval/            # Three-stage search pipeline

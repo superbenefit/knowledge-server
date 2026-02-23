@@ -410,5 +410,5 @@ export function registerTools(server: McpServer, env: Env): void {
   );
 }
 
-// Export helper functions for use in resources
-export { listGroups, listReleases };
+// Export helper functions for use in resources and RPC methods
+export { listGroups, listReleases, getTermDefinition };

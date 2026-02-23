@@ -1,15 +1,16 @@
 /**
  * Main entry point for the SuperBenefit Knowledge Server.
  *
- * Routes:
- * - /api/v1/* — Public REST API (no auth, through Hono)
- * - /mcp, /mcp/* — MCP server (direct to handler, bypasses Hono)
- * - /webhook — GitHub webhook (direct handler)
+ * Extends WorkerEntrypoint to provide:
+ * - HTTP routing: /api/v1/*, /mcp, /webhook
+ * - Queue consumer for Vectorize indexing
+ * - RPC methods for inter-Worker service binding calls
  *
- * Phase 1: No authentication. All tools are Open tier.
+ * Phase 1: No authentication. All tools/RPC are Open tier.
  * Phase 2: Add Access JWT parsing before MCP dispatch.
  */
 
+import { WorkerEntrypoint } from 'cloudflare:workers';
 import { Hono } from 'hono';
 import { createMcpHandler } from 'agents/mcp';
 import { api } from './api/routes';
@@ -17,73 +18,22 @@ import { createMcpServer } from './mcp/server';
 import { handleVectorizeQueue } from './consumers/vectorize';
 import { verifyWebhookSignature, isExcluded } from './sync/github';
 import { SECURITY_HEADERS } from '@superbenefit/porch/security';
+import { searchKnowledge, getDocument } from './retrieval';
+import { listGroups, listReleases, getTermDefinition } from './mcp/tools';
 import type { GitHubPushEvent } from './types/sync';
+import type { SearchFilters, R2Document } from './types';
+import type {
+  SearchKnowledgeParams,
+  SearchKnowledgeResult,
+  GetDocumentParams,
+  DefineTermParams,
+  DefineTermResult,
+  ListGroupsResult,
+  ListReleasesResult,
+} from './types/rpc';
 
 // Re-export workflow class so Cloudflare can discover it via wrangler.jsonc class_name
 export { KnowledgeSyncWorkflow } from './sync/workflow';
-
-// ---------------------------------------------------------------------------
-// Webhook handler
-// ---------------------------------------------------------------------------
-
-async function handleWebhook(request: Request, env: Env): Promise<Response> {
-  const body = await request.text();
-  const signature = request.headers.get('x-hub-signature-256');
-  const deliveryId = request.headers.get('x-github-delivery');
-
-  if (!await verifyWebhookSignature(body, signature, env.GITHUB_WEBHOOK_SECRET)) {
-    return new Response('Invalid signature', { status: 403 });
-  }
-
-  // Security: Replay protection via delivery ID nonce
-  if (deliveryId) {
-    const nonceKey = `webhook:${deliveryId}`;
-    const existing = await env.SYNC_STATE.get(nonceKey);
-    if (existing) {
-      return Response.json({ status: 'duplicate', deliveryId });
-    }
-    // Mark as processed with 24h TTL
-    await env.SYNC_STATE.put(nonceKey, Date.now().toString(), { expirationTtl: 86400 });
-  }
-
-  const payload: GitHubPushEvent = JSON.parse(body);
-
-  // Only process pushes to main branch
-  if (payload.ref !== 'refs/heads/main') {
-    return Response.json({ status: 'ignored', reason: 'not main branch' });
-  }
-
-  // Collect changed and deleted files from all commits
-  const changedFiles = payload.commits
-    .flatMap((c) => [...c.added, ...c.modified])
-    .filter((f) => f.endsWith('.md') && !isExcluded(f));
-  const deletedFiles = payload.commits
-    .flatMap((c) => c.removed)
-    .filter((f) => f.endsWith('.md'));
-
-  // Deduplicate
-  const uniqueChanged = [...new Set(changedFiles)];
-  const uniqueDeleted = [...new Set(deletedFiles)];
-
-  if (uniqueChanged.length === 0 && uniqueDeleted.length === 0) {
-    return Response.json({ status: 'ignored', reason: 'no markdown files changed' });
-  }
-
-  // Trigger sync workflow
-  await env.SYNC_WORKFLOW.create({
-    params: {
-      changedFiles: uniqueChanged,
-      deletedFiles: uniqueDeleted,
-      commitSha: payload.after,
-    },
-  });
-
-  return Response.json({
-    status: 'ok',
-    changed: uniqueChanged.length,
-    deleted: uniqueDeleted.length,
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Hono app — mounts public REST API
@@ -162,16 +112,19 @@ a:hover{border-color:#3f3f46;background:#1f1f23}
 app.route('/api/v1', api);
 
 // ---------------------------------------------------------------------------
-// Export Worker module
+// WorkerEntrypoint — HTTP, queue, and RPC interface
 // ---------------------------------------------------------------------------
 
-export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+export default class KnowledgeServer extends WorkerEntrypoint<Env> {
+  /**
+   * HTTP request handler — rate limiting, routing split.
+   */
+  async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
     // Rate limiting — key on client IP
     const clientIp = request.headers.get('CF-Connecting-IP') ?? 'unknown';
-    const { success } = await env.RATE_LIMITER.limit({ key: clientIp });
+    const { success } = await this.env.RATE_LIMITER.limit({ key: clientIp });
     if (!success) {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), {
         status: 429,
@@ -179,9 +132,9 @@ export default {
       });
     }
 
-    // MCP server — direct to handler, bypassing Hono
+    // MCP server — created per-request (WorkerEntrypoint: this.env unavailable at module scope)
     if (url.pathname === '/mcp' || url.pathname.startsWith('/mcp/')) {
-      const server = createMcpServer(env);
+      const server = createMcpServer(this.env);
       const handler = createMcpHandler(server, {
         route: '/mcp',
         corsOptions: {
@@ -191,7 +144,7 @@ export default {
           headers: 'Content-Type, Accept, Authorization, Mcp-Session-Id',
         },
       });
-      const response = await handler(request, env, ctx);
+      const response = await handler(request, this.env, this.ctx);
 
       // Inject security headers into MCP response
       const securedResponse = new Response(response.body, response);
@@ -203,11 +156,146 @@ export default {
 
     // GitHub webhook
     if (url.pathname === '/webhook' && request.method === 'POST') {
-      return handleWebhook(request, env);
+      return this.handleWebhook(request);
     }
 
     // Everything else through Hono (REST API, health checks)
-    return app.fetch(request, env, ctx);
-  },
-  queue: handleVectorizeQueue,
-};
+    return app.fetch(request, this.env, this.ctx);
+  }
+
+  /**
+   * Queue consumer — processes R2 event notifications for Vectorize indexing.
+   */
+  async queue(batch: MessageBatch<unknown>): Promise<void> {
+    return handleVectorizeQueue(batch, this.env);
+  }
+
+  // -------------------------------------------------------------------------
+  // Webhook handler — private, uses this.env and this.ctx
+  // -------------------------------------------------------------------------
+
+  private async handleWebhook(request: Request): Promise<Response> {
+    const body = await request.text();
+    const signature = request.headers.get('x-hub-signature-256');
+    const deliveryId = request.headers.get('x-github-delivery');
+
+    if (!await verifyWebhookSignature(body, signature, this.env.GITHUB_WEBHOOK_SECRET)) {
+      return new Response('Invalid signature', { status: 403 });
+    }
+
+    // Security: Replay protection via delivery ID nonce
+    if (deliveryId) {
+      const nonceKey = `webhook:${deliveryId}`;
+      const existing = await this.env.SYNC_STATE.get(nonceKey);
+      if (existing) {
+        return Response.json({ status: 'duplicate', deliveryId });
+      }
+      // Mark as processed with 24h TTL
+      await this.env.SYNC_STATE.put(nonceKey, Date.now().toString(), { expirationTtl: 86400 });
+    }
+
+    const payload: GitHubPushEvent = JSON.parse(body);
+
+    // Only process pushes to main branch
+    if (payload.ref !== 'refs/heads/main') {
+      return Response.json({ status: 'ignored', reason: 'not main branch' });
+    }
+
+    // Collect changed and deleted files from all commits
+    const changedFiles = payload.commits
+      .flatMap((c) => [...c.added, ...c.modified])
+      .filter((f) => f.endsWith('.md') && !isExcluded(f));
+    const deletedFiles = payload.commits
+      .flatMap((c) => c.removed)
+      .filter((f) => f.endsWith('.md'));
+
+    // Deduplicate
+    const uniqueChanged = [...new Set(changedFiles)];
+    const uniqueDeleted = [...new Set(deletedFiles)];
+
+    if (uniqueChanged.length === 0 && uniqueDeleted.length === 0) {
+      return Response.json({ status: 'ignored', reason: 'no markdown files changed' });
+    }
+
+    // Fire-and-forget workflow — respond immediately
+    this.ctx.waitUntil(
+      this.env.SYNC_WORKFLOW.create({
+        params: {
+          changedFiles: uniqueChanged,
+          deletedFiles: uniqueDeleted,
+          commitSha: payload.after,
+        },
+      })
+    );
+
+    return Response.json({
+      status: 'ok',
+      changed: uniqueChanged.length,
+      deleted: uniqueDeleted.length,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // RPC methods — callable via service bindings from other Workers
+  // -------------------------------------------------------------------------
+
+  /**
+   * Search the knowledge base using three-stage retrieval pipeline.
+   * Stage 1: Vectorize similarity search → Stage 2: BGE reranker → results
+   */
+  async searchKnowledge(params: SearchKnowledgeParams): Promise<SearchKnowledgeResult> {
+    if (!params?.query || typeof params.query !== 'string' || params.query.trim() === '') {
+      throw new Error('RPC searchKnowledge: query is required');
+    }
+    if (params.limit !== undefined && (params.limit < 1 || params.limit > 20)) {
+      throw new Error('RPC searchKnowledge: limit must be 1-20');
+    }
+
+    const filters: SearchFilters = {};
+    if (params.contentType) filters.contentType = params.contentType;
+    if (params.group) filters.group = params.group;
+    if (params.release) filters.release = params.release;
+
+    const items = await searchKnowledge(params.query, filters, {}, this.env);
+    const limited = params.limit ? items.slice(0, params.limit) : items;
+    return { items: limited, total: items.length };
+  }
+
+  /**
+   * Get a single document by content type and ID.
+   * Returns null if not found.
+   */
+  async getDocument(params: GetDocumentParams): Promise<R2Document | null> {
+    if (!params?.contentType || !params?.id) {
+      throw new Error('RPC getDocument: contentType and id are required');
+    }
+    return getDocument(params.contentType, params.id, this.env);
+  }
+
+  /**
+   * List all groups/cells in the SuperBenefit ecosystem.
+   */
+  async listGroups(): Promise<ListGroupsResult> {
+    const groups = await listGroups(this.env);
+    return { groups };
+  }
+
+  /**
+   * List all creative releases with metadata.
+   */
+  async listReleases(): Promise<ListReleasesResult> {
+    const releases = await listReleases(this.env);
+    return { releases };
+  }
+
+  /**
+   * Get the definition of a term from the SuperBenefit lexicon.
+   */
+  async defineTerm(params: DefineTermParams): Promise<DefineTermResult> {
+    if (!params?.term || typeof params.term !== 'string' || params.term.trim() === '') {
+      throw new Error('RPC defineTerm: term is required');
+    }
+    const definition = await getTermDefinition(params.term, this.env);
+    return { term: params.term, definition };
+  }
+}
