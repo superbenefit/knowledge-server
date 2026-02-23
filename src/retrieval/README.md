@@ -105,8 +105,8 @@ The `options` parameter currently only supports `includeDocuments?: boolean`. Wh
 - Converts `SearchFilters` to Vectorize's `VectorizeVectorMetadataFilter` format
 - Only includes fields that are actually set (avoids unnecessary filter constraints)
 - Maps each field to `{ $eq: value }` comparisons
-- For `tags`, uses `{ $in: tags }` for any-match semantics
 - Returns `undefined` if no filters are active
+- Tags are **not** filtered at the Vectorize level (Vectorize's string index can't do element-wise `$in` on arrays); instead, tag filtering is applied post-query in `searchWithFilters()`
 
 **`searchWithFilters()`:**
 1. Generates embedding for the query text
@@ -177,7 +177,7 @@ The `options` parameter currently only supports `includeDocuments?: boolean`. Wh
 
 | Export | Kind | Signature | Description |
 |--------|------|-----------|-------------|
-| `getDocuments` | Async function | `(results: RerankResult[], env) => Promise<R2Document[]>` | Batch fetch documents |
+| `getDocuments` | Async function | `(results: RerankResult[], env) => Promise<Array<R2Document \| undefined>>` | Batch fetch documents |
 | `getDocument` | Async function | `(contentType, id, env) => Promise<R2Document \| null>` | Single document fetch |
 
 #### Internal Logic
@@ -185,9 +185,9 @@ The `options` parameter currently only supports `includeDocuments?: boolean`. Wh
 **`getDocuments()`:**
 - Fetches all documents in parallel via `Promise.all()`
 - Uses `result.metadata.path` (the R2 key stored in Vectorize metadata) for each lookup
-- Skips results with no path
+- Skips results with no path (returns `undefined`)
 - Parses R2 objects as JSON to `R2Document`
-- Filters out null results (missing R2 objects)
+- Returns `undefined` for missing R2 objects, preserving index alignment with the `ranked` array (important for correct `document` attachment in `searchKnowledge()`)
 
 **`getDocument()`:**
 - Constructs the R2 key using `toR2Key(contentType, id)`

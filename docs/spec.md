@@ -574,12 +574,23 @@ export interface R2Document {
 ```typescript
 export function generateId(path: string): string {
   const filename = path.split('/').pop() || path;
-  const id = filename.replace(/\.md$/, '');
-  
-  if (new TextEncoder().encode(id).length > 64) {
-    throw new Error(`ID exceeds 64 byte limit: ${id}`);
+  let id = filename
+    .replace(/\.md$/, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-')   // non-alphanumeric → hyphen
+    .replace(/-{2,}/g, '-')         // collapse consecutive hyphens
+    .replace(/^-|-$/g, '');          // trim leading/trailing hyphens
+
+  // Truncate to 64 bytes (Vectorize limit)
+  while (new TextEncoder().encode(id).length > VECTORIZE_LIMITS.VECTOR_ID_MAX_BYTES) {
+    id = id.slice(0, -1);
   }
-  
+  id = id.replace(/-$/, '');
+
+  if (!id) {
+    throw new Error(`Cannot generate valid ID from path: ${path}`);
+  }
+
   return id;
 }
 
@@ -602,7 +613,7 @@ export function toR2Key(contentType: ContentType, id: string): string {
 |-------|------|---------|
 | `contentType` | string | Filter by type (pattern, tag, etc.) |
 | `group` | string | Filter by cell/project |
-| `tags` | string | Filter by tags (comma-separated) |
+| `tags` | string[] | Filter by tags (array, filtered post-query) |
 | `release` | string | Filter by creative release |
 | `status` | string | Filter projects by status |
 | `date` | number | Sort by date (Unix timestamp ms) |
@@ -628,7 +639,7 @@ interface VectorRecord {
     // Indexed fields (used for filtering)
     contentType: string;
     group: string;
-    tags: string;                // "governance,cells,coordination"
+    tags: string[];              // ["governance", "cells", "coordination"]
     release: string;
     status: string;
     date: number;                // Unix timestamp ms
@@ -764,54 +775,77 @@ export class KnowledgeSyncWorkflow extends WorkflowEntrypoint<Env, SyncParams> {
 ### 5.3 R2 Event Notifications → Queue Consumer
 
 ```typescript
-export default {
-  async queue(batch: MessageBatch<R2EventNotification>, env: Env) {
-    for (const msg of batch.messages) {
-      const { object, eventType } = msg.body;
-      
+const CREATE_ACTIONS = ['PutObject', 'CopyObject', 'CompleteMultipartUpload'] as const;
+const DELETE_ACTIONS = ['DeleteObject', 'LifecycleDeletion'] as const;
+
+export async function handleVectorizeQueue(
+  batch: MessageBatch<unknown>,
+  env: ConsumerDeps,
+): Promise<void> {
+  for (const msg of batch.messages) {
+    try {
+      const parseResult = R2EventNotificationSchema.safeParse(msg.body);
+      if (!parseResult.success) {
+        msg.ack(); // Don't retry malformed messages
+        continue;
+      }
+      const { object, action } = parseResult.data;
+
       if (!object.key.startsWith('content/')) {
         msg.ack();
         continue;
       }
-      
-      if (eventType === 'object-create') {
-        const doc = await env.KNOWLEDGE.get(object.key);
-        if (doc) {
-          const r2Doc: R2Document = await doc.json();
-          await updateVectorize(r2Doc, env);
+
+      const isCreate = (CREATE_ACTIONS as readonly string[]).includes(action);
+
+      if (isCreate) {
+        const r2Object = await env.KNOWLEDGE.get(object.key);
+        if (!r2Object) {
+          msg.ack();
+          continue;
         }
-      } else if (eventType === 'object-delete') {
+        const doc: R2Document = await r2Object.json();
+        await updateVectorize(doc, env);
+      } else {
         const id = extractIdFromKey(object.key);
         await deleteFromVectorize(id, env);
       }
-      
+
       msg.ack();
+    } catch (err) {
+      // Don't ack — message will be retried by the queue
+      console.error(`Failed to process queue message ${msg.id}:`, err);
     }
   }
-};
+}
 
 async function updateVectorize(doc: R2Document, env: Env): Promise<void> {
+  const embeddingInput = [doc.metadata.title, doc.metadata.description, doc.content]
+    .filter(Boolean)
+    .join('\n\n');
+
   const embedding = await env.AI.run('@cf/baai/bge-base-en-v1.5', {
-    text: [doc.content]
+    text: [embeddingInput]
   });
-  
+
   const metadata = {
     contentType: doc.contentType,
     group: doc.metadata.group || '',
-    tags: (doc.metadata.tags || []).join(','),
+    tags: Array.isArray(doc.metadata.tags) ? doc.metadata.tags : [],
     release: doc.metadata.release || '',
     status: doc.metadata.status || '',
-    date: new Date(doc.metadata.date).getTime(),
+    date: doc.metadata.date ? new Date(doc.metadata.date).getTime() : 0,
     path: toR2Key(doc.contentType, doc.id),
-    title: doc.metadata.title,
+    title: doc.metadata.title || '',
     description: doc.metadata.description || '',
     content: truncateForMetadata(doc.content),
   };
-  
+
   await env.VECTORIZE.upsert([{
     id: doc.id,
     values: embedding.data[0],
-    metadata
+    metadata,
+    namespace: VECTORIZE_NAMESPACE,
   }]);
 }
 
@@ -866,15 +900,28 @@ async function searchWithFilters(
   if (filters.group) vectorFilter.group = { $eq: filters.group };
   if (filters.release) vectorFilter.release = { $eq: filters.release };
   if (filters.status) vectorFilter.status = { $eq: filters.status };
-  if (filters.tags) vectorFilter.tags = { $in: filters.tags };
+  // Tags are filtered post-query (Vectorize can't do element-wise $in on arrays)
 
   const results = await env.VECTORIZE.query(embedding.data[0], {
     topK: 20,
     returnMetadata: 'all',
-    filter: Object.keys(vectorFilter).length > 0 ? vectorFilter : undefined
+    filter: Object.keys(vectorFilter).length > 0 ? vectorFilter : undefined,
+    namespace: VECTORIZE_NAMESPACE,
   });
 
-  return results.matches;
+  let matches = results.matches;
+
+  // Post-query tag filtering
+  if (filters.tags && filters.tags.length > 0) {
+    const wanted = new Set(filters.tags);
+    matches = matches.filter((m) => {
+      const tags = m.metadata?.['tags'];
+      if (!Array.isArray(tags)) return false;
+      return tags.some((t: string) => wanted.has(t));
+    });
+  }
+
+  return matches;
 }
 ```
 
@@ -923,17 +970,16 @@ async function rerankResults(
 async function getDocuments(
   results: RerankResult[],
   env: Env
-): Promise<R2Document[]> {
-  const docs = await Promise.all(
+): Promise<Array<R2Document | undefined>> {
+  return Promise.all(
     results.map(async (result) => {
       const path = result.metadata.path as string;
-      if (!path) return null;
+      if (!path) return undefined;
       const obj = await env.KNOWLEDGE.get(path);
-      if (!obj) return null;
+      if (!obj) return undefined;
       return obj.json() as Promise<R2Document>;
     })
   );
-  return docs.filter((d): d is R2Document => d !== null);
 }
 
 async function getDocument(
@@ -962,7 +1008,7 @@ export async function searchKnowledge(
   
   const ranked = await rerankResults(query, matches, env);
   
-  let documents: R2Document[] = [];
+  let documents: Array<R2Document | undefined> = [];
   if (options.includeDocuments) {
     documents = await getDocuments(ranked, env);
   }

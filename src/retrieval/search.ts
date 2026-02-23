@@ -49,12 +49,9 @@ function buildVectorFilter(
     filter['status'] = { $eq: filters.status };
     hasFilter = true;
   }
-  if (filters.tags && filters.tags.length > 0) {
-    // Tags are stored as comma-separated string in Vectorize metadata.
-    // Use $in for any-match semantics across the tag values.
-    filter['tags'] = { $in: filters.tags };
-    hasFilter = true;
-  }
+  // Tags are stored as string[] in metadata — Vectorize's string index
+  // can't do element-wise $in on arrays, so tag filtering is applied
+  // post-query in searchWithFilters().
 
   return hasFilter ? filter : undefined;
 }
@@ -87,5 +84,17 @@ export async function searchWithFilters(
     namespace: VECTORIZE_NAMESPACE,
   });
 
-  return results.matches;
+  let matches = results.matches;
+
+  // Post-query tag filtering (Vectorize can't filter string[] with $in)
+  if (filters.tags && filters.tags.length > 0) {
+    const wanted = new Set(filters.tags);
+    matches = matches.filter((m) => {
+      const tags = m.metadata?.['tags'];
+      if (!Array.isArray(tags)) return false;
+      return tags.some((t: string) => wanted.has(t));
+    });
+  }
+
+  return matches;
 }

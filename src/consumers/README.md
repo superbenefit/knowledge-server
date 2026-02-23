@@ -25,12 +25,12 @@ graph LR
     R2["R2 Bucket<br/>(KNOWLEDGE)"] -->|event notification| Queue["Cloudflare Queue<br/>(superbenefit-knowledge-sync)"]
     Queue --> Consumer["handleVectorizeQueue()"]
 
-    Consumer -->|object-create| Fetch["R2.get(key)"]
+    Consumer -->|PutObject / CopyObject| Fetch["R2.get(key)"]
     Fetch --> Parse["Parse R2Document JSON"]
     Parse --> Embed["AI.run()<br/>@cf/baai/bge-base-en-v1.5"]
     Embed --> Upsert["Vectorize.upsert()<br/>id, values, metadata"]
 
-    Consumer -->|object-delete| Delete["Vectorize.deleteByIds()"]
+    Consumer -->|DeleteObject| Delete["Vectorize.deleteByIds()"]
 
     Consumer -->|not content/| Skip["msg.ack()<br/>(skip)"]
 ```
@@ -56,12 +56,12 @@ graph LR
 Iterates through each message in the batch sequentially. For each message:
 
 1. **Prefix filter:** Checks if `object.key` starts with `content/`. Non-content objects (e.g., metadata files) are acknowledged and skipped.
-2. **Create events (`object-create`):**
+2. **Create events (`PutObject`, `CopyObject`, `CompleteMultipartUpload`):**
    - Fetches the R2 object by key
    - If the object is gone (deleted between event and processing), acknowledges and skips
    - Parses the R2 object as `R2Document` JSON
    - Calls `updateVectorize()` to embed and upsert
-3. **Delete events (`object-delete`):**
+3. **Delete events (`DeleteObject`, `LifecycleDeletion`):**
    - Extracts the document ID from the R2 key using `extractIdFromKey()`
    - Calls `deleteFromVectorize()` to remove the vector
 4. **Acknowledgment:** `msg.ack()` is called per-message on success. On failure, the message is NOT acknowledged, so the queue will retry it.
@@ -73,12 +73,12 @@ Iterates through each message in the batch sequentially. For each message:
 1. **Build embedding input:** Concatenates `title`, `description`, and `content` body (filtered for truthy values, joined with double newlines)
 2. **Generate embedding:** Calls `@cf/baai/bge-base-en-v1.5` via Workers AI, producing a 768-dimensional vector
 3. **Build metadata:** Constructs a `VectorizeMetadata` object with:
-   - 6 indexed fields: `contentType`, `group`, `tags` (comma-joined from array), `release`, `status`, `date` (Unix timestamp ms)
+   - 6 indexed fields: `contentType`, `group`, `tags` (string array, filtered post-query), `release`, `status`, `date` (Unix timestamp ms)
    - 4 non-indexed fields: `path` (R2 key), `title`, `description`, `content` (truncated to ~8KB via `truncateForMetadata()`)
 4. **Upsert:** Calls `VECTORIZE.upsert()` with the vector ID, values, metadata, and namespace
 
 **Metadata construction details:**
-- `tags` are serialized as a comma-separated string because Vectorize metadata values must be scalar. The search module uses `$in` filter semantics to match.
+- `tags` are stored as a `string[]` in Vectorize metadata. Because Vectorize's string index can't do element-wise matching on arrays, tag filtering is applied post-query in `searchWithFilters()` using a `Set.has()` check.
 - `date` is stored as a Unix timestamp (milliseconds) for numeric range filtering.
 - `content` is truncated to ~8000 characters at a word boundary to stay within the 10 KiB metadata limit while leaving room for other fields.
 - Missing optional fields default to empty string `''` or `0` for date.
@@ -88,14 +88,15 @@ Iterates through each message in the batch sequentially. For each message:
 
 #### Internal Types
 
-**`R2EventNotification`** (defined locally, mirrors `types/sync.ts`):
+**`R2EventNotification`** (Zod-validated locally, mirrors `types/sync.ts`):
 ```typescript
 interface R2EventNotification {
   account: string;
+  action: 'PutObject' | 'CopyObject' | 'CompleteMultipartUpload' | 'DeleteObject' | 'LifecycleDeletion';
   bucket: string;
-  object: { key: string; size: number; eTag: string };
-  eventType: 'object-create' | 'object-delete';
+  object: { key: string; size?: number; eTag?: string };
   eventTime: string;
+  copySource?: { bucket: string; object: string };
 }
 ```
 
@@ -171,8 +172,8 @@ Failed to process queue message {msg.id}: {error.message}
 4. Count total indexed fields (max 10; currently 6)
 
 **Processing additional event types:**
-1. Extend the `eventType` union in `R2EventNotification`
-2. Add a new branch in the event processing loop in `handleVectorizeQueue()`
+1. Add the action name to the `CREATE_ACTIONS` or `DELETE_ACTIONS` arrays in `vectorize.ts`
+2. Add a new branch in the event processing loop in `handleVectorizeQueue()` if needed
 
 ## Cross-References
 
