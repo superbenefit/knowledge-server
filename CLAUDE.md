@@ -14,7 +14,7 @@ Building an MCP server + public REST API for SuperBenefit DAO that:
 
 ## Technical Stack
 
-- Cloudflare Workers (stateless `createMcpHandler`)
+- Cloudflare Workers (`WorkerEntrypoint` class with RPC methods + HTTP handlers)
 - Hono for HTTP routing + REST API
 - @hono/zod-openapi for OpenAPI generation
 - Vectorize for semantic search
@@ -26,11 +26,11 @@ Building an MCP server + public REST API for SuperBenefit DAO that:
 
 ### Strict Requirements
 
-- Always use `export default { fetch }` pattern or Hono app export
-- NEVER use `addEventListener('fetch', ...)`
+- Default export is `class KnowledgeServer extends WorkerEntrypoint<Env>` — uses `this.env` / `this.ctx`
+- NEVER use `addEventListener('fetch', ...)` or plain `export default { fetch }`
 - Use Web standard APIs (Request, Response, URL)
 - Import Cloudflare types from 'cloudflare:workers'
-- Environment accessed via second arg: `fetch(req, env)`
+- RPC methods use camelCase (e.g., `searchKnowledge`, `getDocument`)
 
 ### MCP Server Pattern (Porch Framework)
 
@@ -70,13 +70,14 @@ server.tool('my_tool', 'description', { param: z.string() },
 
 ```
 src/
-├── index.ts              # Main router (rate limiting, security headers, routing split)
+├── index.ts              # WorkerEntrypoint class (HTTP, queue, webhook, RPC methods)
 ├── types/
 │   ├── index.ts          # Re-exports all types (auth from @superbenefit/porch/auth)
 │   ├── content.ts        # 21 content type schemas, PATH_TYPE_MAP, inferContentType
 │   ├── api.ts            # API request/response types
 │   ├── storage.ts        # R2Document, VectorizeMetadata
-│   └── sync.ts           # SyncParams, R2EventNotification
+│   ├── sync.ts           # SyncParams, R2EventNotification
+│   └── rpc.ts            # RPC parameter/result types for service binding consumers
 ├── api/                  # Public REST API
 │   ├── routes.ts         # Hono + OpenAPI routes (health, entries, search, openapi)
 │   └── schemas.ts        # Zod schemas
@@ -130,23 +131,30 @@ const reranked = await env.AI.run('@cf/baai/bge-reranker-base', {
 });
 ```
 
-### Router Integration
+### WorkerEntrypoint + Router Integration
 
 ```typescript
-// src/index.ts — rate limiting + security headers + routing split
-import { SECURITY_HEADERS } from '@superbenefit/porch/security';
+// src/index.ts — WorkerEntrypoint with HTTP routing, queue, and RPC
+import { WorkerEntrypoint } from 'cloudflare:workers';
 
-export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    // Rate limiting on all requests (429 with SECURITY_HEADERS)
-    // MCP → createMcpHandler (direct, security headers injected)
-    // POST /webhook → handleWebhook (with replay protection via delivery ID)
-    // Everything else → Hono (REST API at /api/v1)
-    ...
-  },
-  queue: handleVectorizeQueue,
-};
+export default class KnowledgeServer extends WorkerEntrypoint<Env> {
+  async fetch(request: Request): Promise<Response> {
+    // Rate limiting → MCP → webhook → Hono (REST API)
+    // Uses this.env / this.ctx (not function args)
+  }
+  async queue(batch: MessageBatch<unknown>): Promise<void> { ... }
+  private async handleWebhook(request: Request): Promise<Response> { ... }
+
+  // RPC methods — callable via service bindings from other Workers
+  async searchKnowledge(params: SearchKnowledgeParams): Promise<SearchKnowledgeResult> { ... }
+  async getDocument(params: GetDocumentParams): Promise<R2Document | null> { ... }
+  async listGroups(): Promise<ListGroupsResult> { ... }
+  async listReleases(): Promise<ListReleasesResult> { ... }
+  async defineTerm(params: DefineTermParams): Promise<DefineTermResult> { ... }
+}
 ```
+
+Consumer apps call via service bindings: `await env.KNOWLEDGE_SERVER.searchKnowledge({ query: '...' })`
 
 ## Testing
 

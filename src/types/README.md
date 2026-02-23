@@ -3,7 +3,7 @@
 > Defines the entire type system: 21-type content ontology, auth model, API shapes, storage schemas, and sync payloads.
 
 **Source:** `src/types/`
-**Files:** 5 (`index.ts`, `content.ts`, `api.ts`, `storage.ts`, `sync.ts`) + auth types re-exported from `@superbenefit/porch/auth`
+**Files:** 6 (`index.ts`, `content.ts`, `api.ts`, `storage.ts`, `sync.ts`, `rpc.ts`) + auth types re-exported from `@superbenefit/porch/auth`
 **Spec reference:** `docs/spec.md` sections 2, 3, 4, 5, 6, 8
 **Depends on:** none (leaf module)
 **Depended on by:** `auth`, `retrieval`, `consumers`, `sync`, `mcp`, `api`, `index`
@@ -64,6 +64,7 @@ All exports are re-exports. Organized into sections by spec reference:
 | API (spec 6, 8) | `SearchFiltersSchema`, `ListParamsSchema`, `SearchParamsSchema`, `SearchResultSchema`, `RerankResultSchema`, `ErrorResponseSchema`, `EntryResponseSchema`, `EntryListResponseSchema`, `SearchResponseSchema` | `SearchFilters`, `ListParams`, `SearchParams`, `SearchResult`, `RerankResult`, `ErrorResponse` | |
 | Storage (spec 4) | `R2DocumentSchema`, `VectorizeMetadataSchema` | `R2Document`, `VectorizeMetadata` | `truncateForMetadata`, `generateId`, `toR2Key`, `extractIdFromKey`, `extractContentTypeFromKey`, `VECTORIZE_LIMITS`, `VECTORIZE_NAMESPACE` |
 | Sync (spec 5) | `SyncParamsSchema` | `SyncParams`, `R2EventNotification`, `GitHubPushEvent`, `ParsedMarkdown` | |
+| RPC (spec v0.17) | | `SearchKnowledgeParams`, `SearchKnowledgeResult`, `GetDocumentParams`, `DefineTermParams`, `DefineTermResult`, `ListGroupsResult`, `ListReleasesResult` | |
 
 #### Dependencies
 - **Internal:** `./content`, `@superbenefit/porch/auth`, `./api`, `./storage`, `./sync`
@@ -315,6 +316,34 @@ The `SearchFiltersSchema` is shared between REST API and MCP tools — both use 
 
 #### Dependencies
 - **External:** `@hono/zod-openapi`
+
+---
+
+### `rpc.ts`
+
+**Purpose:** Defines RPC parameter and result types for the WorkerEntrypoint service binding interface. Consumer apps import these for type-safe method calls.
+
+#### Exports
+
+| Export | Kind | Description |
+|--------|------|-------------|
+| `SearchKnowledgeParams` | Interface | `{ query, contentType?, group?, release?, limit? }` |
+| `SearchKnowledgeResult` | Interface | `{ items: SearchResult[], total: number }` |
+| `GetDocumentParams` | Interface | `{ contentType, id }` |
+| `DefineTermParams` | Interface | `{ term }` |
+| `DefineTermResult` | Interface | `{ term, definition: string \| null }` |
+| `ListGroupsResult` | Interface | `{ groups: Array<{ id, title, description? }> }` |
+| `ListReleasesResult` | Interface | `{ releases: Array<{ id, title, description? }> }` |
+| `ContentType` | Re-export | From `./content` |
+| `SearchResult` | Re-export | From `./api` |
+| `R2Document` | Re-export | From `./storage` |
+
+#### Internal Logic
+
+These types define the contract for inter-Worker RPC calls via service bindings. They reuse existing entity types (`ContentType`, `SearchResult`, `R2Document`) rather than duplicating them. Exposed via `package.json` exports field: `import type { SearchKnowledgeParams } from 'superbenefit-knowledge-server/types'`.
+
+#### Dependencies
+- **Internal:** `./content` (ContentType), `./api` (SearchResult), `./storage` (R2Document)
 
 ---
 

@@ -105,3 +105,14 @@ export type { R2Document, VectorizeMetadata } from './storage';
 // Sync (spec section 5)
 export { SyncParamsSchema } from './sync';
 export type { SyncParams, R2EventNotification, GitHubPushEvent, ParsedMarkdown } from './sync';
+
+// RPC (spec v0.17)
+export type {
+  SearchKnowledgeParams,
+  SearchKnowledgeResult,
+  GetDocumentParams,
+  DefineTermParams,
+  DefineTermResult,
+  ListGroupsResult,
+  ListReleasesResult,
+} from './rpc';
