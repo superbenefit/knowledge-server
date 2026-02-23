@@ -12,7 +12,8 @@
 		"start": "wrangler dev",
 		"cf-typegen": "wrangler types",
 		"type-check": "tsc --noEmit",
-		"test": "vitest run"
+		"test": "vitest run",
+		"bootstrap": "npx tsx scripts/bootstrap-sync.ts"
 	},
 	"dependencies": {
 		"@hono/zod-openapi": "^1.2.0",
