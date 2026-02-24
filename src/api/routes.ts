@@ -97,7 +97,7 @@ const listEntriesRoute = createRoute({
 });
 
 api.openapi(listEntriesRoute, async (c) => {
-  const { contentType, group, release, limit, offset } = c.req.valid('query');
+  const { contentType, group, release, sourcePath, limit, offset } = c.req.valid('query');
 
   // Build R2 list prefix based on contentType filter
   const prefix = contentType ? `content/${contentType}/` : 'content/';
@@ -122,7 +122,7 @@ api.openapi(listEntriesRoute, async (c) => {
   let paginated: R2Document[];
   let total: number;
 
-  if (group || release) {
+  if (group || release || sourcePath) {
     // Need metadata to filter — fetch in batches of 50 to limit concurrency
     const BATCH_SIZE = 50;
     const allDocs: R2Document[] = [];
@@ -139,6 +139,7 @@ api.openapi(listEntriesRoute, async (c) => {
         if (!doc) continue;
         if (group && doc.metadata?.group !== group) continue;
         if (release && doc.metadata?.release !== release) continue;
+        if (sourcePath && !doc.path.startsWith(sourcePath)) continue;
         allDocs.push(doc);
       }
     }

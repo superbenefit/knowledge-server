@@ -1,6 +1,6 @@
 export { searchWithFilters, generateEmbedding } from './search';
 export { rerankResults, hashQuery } from './rerank';
-export { getDocuments, getDocument } from './fetch';
+export { getDocuments, getDocument, getDocumentByPath } from './fetch';
 
 import type { SearchFilters, SearchResult, R2Document } from '../types';
 import type { ContentType } from '../types';

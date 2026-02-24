@@ -19,6 +19,7 @@ export const ListParamsSchema = z
     contentType: ContentTypeSchema.optional(),
     group: z.string().optional(),
     release: z.string().optional(),
+    sourcePath: z.string().optional(),
     limit: z.coerce.number().min(1).max(100).default(20),
     offset: z.coerce.number().min(0).default(0),
   })
