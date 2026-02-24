@@ -29,6 +29,10 @@ export interface GetDocumentParams {
   id: string;
 }
 
+export interface GetDocumentByPathParams {
+  path: string;
+}
+
 export interface DefineTermParams {
   term: string;
 }

@@ -18,7 +18,7 @@ import { createMcpServer } from './mcp/server';
 import { handleVectorizeQueue } from './consumers/vectorize';
 import { verifyWebhookSignature, isExcluded } from './sync/github';
 import { SECURITY_HEADERS } from '@superbenefit/porch/security';
-import { searchKnowledge, getDocument } from './retrieval';
+import { searchKnowledge, getDocument, getDocumentByPath } from './retrieval';
 import { listGroups, listReleases, getTermDefinition } from './mcp/tools';
 import type { GitHubPushEvent } from './types/sync';
 import type { SearchFilters, R2Document } from './types';
@@ -26,6 +26,7 @@ import type {
   SearchKnowledgeParams,
   SearchKnowledgeResult,
   GetDocumentParams,
+  GetDocumentByPathParams,
   DefineTermParams,
   DefineTermResult,
   ListGroupsResult,
@@ -270,6 +271,17 @@ export default class KnowledgeServer extends WorkerEntrypoint<Env> {
       throw new Error('RPC getDocument: contentType and id are required');
     }
     return getDocument(params.contentType, params.id, this.env);
+  }
+
+  /**
+   * Get a single document by its exact source path.
+   * Returns null if not found.
+   */
+  async getDocumentByPath(params: GetDocumentByPathParams): Promise<R2Document | null> {
+    if (!params?.path || typeof params.path !== 'string' || params.path.trim() === '') {
+      throw new Error('RPC getDocumentByPath: path is required');
+    }
+    return getDocumentByPath(params.path, this.env);
   }
 
   /**
