@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // Exclude ambient worker types (KVNamespace, R2Bucket, etc.) inherited from root tsconfig.
+    // This package has no Cloudflare runtime dependency.
+    "types": []
+  },
+  "include": ["src"]
+}
