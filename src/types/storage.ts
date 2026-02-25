@@ -1,38 +1,22 @@
-import { z } from '@hono/zod-openapi';
-import { ContentTypeSchema, type ContentType } from './content';
+import { z } from 'zod';
 
-// ---------------------------------------------------------------------------
-// Vectorize limits (spec Appendix C)
-// ---------------------------------------------------------------------------
+// Shared schemas — canonical definitions in @superbenefit/knowledge-schemas
+export {
+  VECTORIZE_LIMITS,
+  R2DocumentSchema,
+  generateId,
+  toR2Key,
+  extractIdFromKey,
+  extractContentTypeFromKey,
+} from '@superbenefit/knowledge-schemas';
+export type { R2Document } from '@superbenefit/knowledge-schemas';
 
-export const VECTORIZE_LIMITS = {
-  METADATA_MAX_BYTES: 10 * 1024,       // 10 KiB per vector
-  VECTOR_ID_MAX_BYTES: 64,
-  STRING_INDEX_MAX_BYTES: 64,          // First 64 bytes indexed for filtering
-  TOP_K_WITH_METADATA: 20,
-  TOP_K_WITHOUT_METADATA: 100,
-  MAX_METADATA_INDEXES: 10,
-} as const;
+// Re-import for local use
+import { VECTORIZE_LIMITS } from '@superbenefit/knowledge-schemas';
 
 // Vectorize namespace for multi-tenant support (spec section 4.3)
 // Allows future expansion to other DAOs/content sources
 export const VECTORIZE_NAMESPACE = 'superbenefit' as const;
-
-// ---------------------------------------------------------------------------
-// R2 document shape (spec section 4.1)
-// ---------------------------------------------------------------------------
-
-export const R2DocumentSchema = z.object({
-  id: z.string(),
-  contentType: ContentTypeSchema,
-  path: z.string(),
-  metadata: z.record(z.string(), z.unknown()),
-  content: z.string(),
-  syncedAt: z.string().datetime(),
-  commitSha: z.string(),
-}).openapi('R2Document');
-
-export type R2Document = z.infer<typeof R2DocumentSchema>;
 
 // ---------------------------------------------------------------------------
 // Vectorize metadata (spec section 4.3–4.4)
@@ -53,7 +37,7 @@ export const VectorizeMetadataSchema = z.object({
   title: z.string(),
   description: z.string(),
   content: z.string(),         // Truncated body for reranking
-}).openapi('VectorizeMetadata');
+});
 
 export type VectorizeMetadata = z.infer<typeof VectorizeMetadataSchema>;
 
@@ -69,73 +53,4 @@ export function truncateForMetadata(content: string): string {
   const truncated = content.slice(0, MAX_CONTENT_LENGTH);
   const lastSpace = truncated.lastIndexOf(' ');
   return truncated.slice(0, lastSpace) + '...';
-}
-
-// ---------------------------------------------------------------------------
-// ID generation and R2 key helpers (spec section 4.2)
-// ---------------------------------------------------------------------------
-
-/**
- * Generate document ID from file path.
- * Example: "artifacts/patterns/cell-governance.md" → "cell-governance"
- *
- * Slugifies the filename: lowercase, non-alphanumeric → hyphens,
- * collapsed and trimmed. Truncated to 64 bytes (Vectorize limit).
- *
- * Constraints:
- * - Max 64 bytes (Vectorize limit)
- * - URL-safe characters only (a-z, 0-9, hyphens)
- * - Unique within contentType namespace
- */
-export function generateId(path: string): string {
-  const filename = path.split('/').pop() || path;
-  let id = filename
-    .replace(/\.md$/, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, '-')
-    .replace(/-{2,}/g, '-')
-    .replace(/^-|-$/g, '');
-
-  // Truncate to 64 bytes (Vectorize limit)
-  while (new TextEncoder().encode(id).length > VECTORIZE_LIMITS.VECTOR_ID_MAX_BYTES) {
-    id = id.slice(0, -1);
-  }
-  id = id.replace(/-$/, '');
-
-  if (!id) {
-    throw new Error(`Cannot generate valid ID from path: ${path}`);
-  }
-
-  return id;
-}
-
-/**
- * Construct R2 object key from contentType and ID.
- * Example: ("pattern", "cell-governance") → "content/pattern/cell-governance.json"
- */
-export function toR2Key(contentType: ContentType, id: string): string {
-  // Security: Prevent path traversal attacks
-  if (id.includes('..') || id.includes('/') || id.includes('\\')) {
-    throw new Error(`Invalid characters in document ID: ${id}`);
-  }
-  return `content/${contentType}/${id}.json`;
-}
-
-/**
- * Extract ID from R2 object key.
- * Example: "content/pattern/cell-governance.json" → "cell-governance"
- */
-export function extractIdFromKey(key: string): string {
-  const parts = key.split('/');
-  const filename = parts[parts.length - 1];
-  return filename.replace(/\.json$/, '');
-}
-
-/**
- * Extract contentType from R2 object key.
- * Example: "content/pattern/cell-governance.json" → "pattern"
- */
-export function extractContentTypeFromKey(key: string): ContentType {
-  const parts = key.split('/');
-  return parts[1] as ContentType;
 }
