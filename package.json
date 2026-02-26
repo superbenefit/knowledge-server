@@ -2,6 +2,7 @@
 	"name": "superbenefit-knowledge-server",
 	"version": "0.0.1",
 	"private": true,
+	"workspaces": ["packages/*"],
 	"exports": {
 		".": "./src/index.ts",
 		"./types": "./src/types/rpc.ts"
@@ -11,12 +12,13 @@
 		"dev": "wrangler dev",
 		"start": "wrangler dev",
 		"cf-typegen": "wrangler types",
-		"type-check": "tsc --noEmit",
+		"type-check": "tsc --noEmit && tsc --noEmit -p packages/schemas/tsconfig.json",
 		"test": "vitest run",
 		"bootstrap": "npx tsx scripts/bootstrap-sync.ts"
 	},
 	"dependencies": {
 		"@hono/zod-openapi": "^1.2.0",
+		"@superbenefit/knowledge-schemas": "*",
 		"@scalar/hono-api-reference": "^0.9.44",
 		"@superbenefit/porch": "github:superbenefit/mcporch",
 		"agents": "^0.3.6",

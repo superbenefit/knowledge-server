@@ -1,4 +1,4 @@
-import { z } from '@hono/zod-openapi';
+import { z } from 'zod';
 
 // ---------------------------------------------------------------------------
 // Sync workflow params (spec section 5.2)

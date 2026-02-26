@@ -1,4 +1,4 @@
-// Content model — canonical definitions live in @superbenefit/knowledge-schemas
+// Content model
 export {
   ContentTypeSchema,
   RESOURCE_TYPES,
@@ -7,36 +7,29 @@ export {
   DATA_TYPES,
   PATH_TYPE_MAP,
   inferContentType,
-  // Base schema
   FileSchema,
-  // Parent schemas
   ReferenceSchema,
   ResourceSchema,
   StorySchema,
   DataSchema,
-  // Reference type schemas
   LinkSchema,
   TagSchema,
-  // Resource type schemas
   PatternSchema,
   PracticeSchema,
   PrimitiveSchema,
   ProtocolSchema,
   PlaybookSchema,
   QuestionSchema,
-  // Story type schemas
   StudySchema,
   ArticleSchema,
   GuideSchema,
-  // Data type schemas
   PersonSchema,
   GroupSchema,
   ProjectSchema,
   PlaceSchema,
   GatheringSchema,
-  // Discriminated union
   ContentSchema,
-} from '@superbenefit/knowledge-schemas';
+} from './content';
 export type {
   ContentType,
   FileFrontmatter,
@@ -56,4 +49,34 @@ export type {
   PlaceFrontmatter,
   GatheringFrontmatter,
   Content,
-} from '@superbenefit/knowledge-schemas';
+} from './content';
+
+// Storage (R2 document shape + key helpers)
+export {
+  VECTORIZE_LIMITS,
+  R2DocumentSchema,
+  generateId,
+  toR2Key,
+  extractIdFromKey,
+  extractContentTypeFromKey,
+} from './storage';
+export type { R2Document } from './storage';
+
+// API schemas
+export {
+  SearchFiltersSchema,
+  ListParamsSchema,
+  SearchParamsSchema,
+  SearchResultSchema,
+  ErrorResponseSchema,
+  EntryResponseSchema,
+  EntryListResponseSchema,
+  SearchResponseSchema,
+} from './api';
+export type {
+  SearchFilters,
+  ListParams,
+  SearchParams,
+  SearchResult,
+  ErrorResponse,
+} from './api';
