@@ -58,27 +58,31 @@ export async function getDocumentByPath(
   path: string,
   env: Env,
 ): Promise<R2Document | null> {
-  const prefix = 'content/';
-  const allObjects: R2Object[] = [];
-  let cursor: string | undefined;
-  do {
-    const listed = await env.KNOWLEDGE.list({ prefix, limit: 1000, ...(cursor ? { cursor } : {}) });
-    allObjects.push(...listed.objects);
-    cursor = listed.truncated ? listed.cursor : undefined;
-  } while (cursor);
+  // Scan both content/ and indexes/ prefixes for path matches
+  const prefixes = ['content/', 'indexes/'];
 
-  const BATCH_SIZE = 50;
-  for (let i = 0; i < allObjects.length; i += BATCH_SIZE) {
-    const batch = allObjects.slice(i, i + BATCH_SIZE);
-    const docs = await Promise.all(
-      batch.map(async (obj): Promise<R2Document | null> => {
-        const object = await env.KNOWLEDGE.get(obj.key);
-        if (!object) return null;
-        return object.json();
-      }),
-    );
-    for (const doc of docs) {
-      if (doc && doc.path === path) return doc;
+  for (const prefix of prefixes) {
+    const allObjects: R2Object[] = [];
+    let cursor: string | undefined;
+    do {
+      const listed = await env.KNOWLEDGE.list({ prefix, limit: 1000, ...(cursor ? { cursor } : {}) });
+      allObjects.push(...listed.objects);
+      cursor = listed.truncated ? listed.cursor : undefined;
+    } while (cursor);
+
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < allObjects.length; i += BATCH_SIZE) {
+      const batch = allObjects.slice(i, i + BATCH_SIZE);
+      const docs = await Promise.all(
+        batch.map(async (obj): Promise<R2Document | null> => {
+          const object = await env.KNOWLEDGE.get(obj.key);
+          if (!object) return null;
+          return object.json();
+        }),
+      );
+      for (const doc of docs) {
+        if (doc && doc.path === path) return doc;
+      }
     }
   }
   return null;

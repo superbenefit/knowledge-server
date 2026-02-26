@@ -78,6 +78,9 @@ export function toR2Key(contentType: ContentType, id: string): string {
   if (id.includes('..') || id.includes('/') || id.includes('\\')) {
     throw new Error(`Invalid characters in document ID: ${id}`);
   }
+  if (contentType === 'index') {
+    return `indexes/${id}.json`;
+  }
   return `content/${contentType}/${id}.json`;
 }
 
@@ -96,6 +99,9 @@ export function extractIdFromKey(key: string): string {
  * Example: "content/pattern/cell-governance.json" → "pattern"
  */
 export function extractContentTypeFromKey(key: string): ContentType {
+  if (key.startsWith('indexes/')) {
+    return 'index';
+  }
   const parts = key.split('/');
   return parts[1] as ContentType;
 }
