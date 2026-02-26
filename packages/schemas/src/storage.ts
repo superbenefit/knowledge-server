@@ -24,6 +24,7 @@ export const R2DocumentSchema = z.object({
   path: z.string(),
   metadata: z.record(z.string(), z.unknown()),
   content: z.string(),
+  attachments: z.array(z.string()).optional(),
   syncedAt: z.string().datetime(),
   commitSha: z.string(),
 });
@@ -98,4 +99,24 @@ export function extractIdFromKey(key: string): string {
 export function extractContentTypeFromKey(key: string): ContentType {
   const parts = key.split('/');
   return parts[1] as ContentType;
+}
+
+// ---------------------------------------------------------------------------
+// Attachment R2 key helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate and return an R2 key for an attachment file.
+ *
+ * The key is the relativePath itself (e.g. "attachments/images/banner.png").
+ * Rejects path traversal attempts and paths that don't start with "attachments/".
+ */
+export function toAttachmentR2Key(relativePath: string): string {
+  if (relativePath.includes('..')) {
+    throw new Error(`Path traversal detected in attachment path: ${relativePath}`);
+  }
+  if (!relativePath.startsWith('attachments/')) {
+    throw new Error(`Attachment path must start with "attachments/": ${relativePath}`);
+  }
+  return relativePath;
 }

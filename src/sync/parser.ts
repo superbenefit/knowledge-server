@@ -4,6 +4,67 @@ import type { ParsedMarkdown } from '../types/sync';
 
 const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 
+// Attachment reference patterns
+const OBSIDIAN_EMBED_RE = /!\[\[([^\]]*?attachments\/[^\]]+)\]\]/g;
+const MD_IMAGE_RE = /!\[[^\]]*\]\(([^)]*?attachments\/[^)]+)\)/g;
+
+export interface AttachmentRef {
+  /** Relative path from repo root, e.g. "attachments/images/banner.png" */
+  relativePath: string;
+  /** Source of the reference */
+  source: 'body' | 'frontmatter';
+}
+
+/**
+ * Scan markdown body and frontmatter for attachment references.
+ *
+ * Supports:
+ * - Obsidian embeds: ![[attachments/...]]
+ * - Standard markdown images: ![alt](attachments/...)
+ * - Frontmatter `banner` field (plain path or ![[...]] syntax)
+ *
+ * Returns deduplicated refs keyed by relativePath.
+ */
+export function extractAttachmentRefs(
+  body: string,
+  frontmatter: Record<string, unknown>,
+): AttachmentRef[] {
+  const refs = new Map<string, AttachmentRef>();
+
+  // Scan body for Obsidian embeds: ![[attachments/...]]
+  for (const match of body.matchAll(OBSIDIAN_EMBED_RE)) {
+    const path = match[1].trim();
+    if (!refs.has(path)) {
+      refs.set(path, { relativePath: path, source: 'body' });
+    }
+  }
+
+  // Scan body for standard markdown images: ![alt](attachments/...)
+  for (const match of body.matchAll(MD_IMAGE_RE)) {
+    const path = match[1].trim();
+    if (!refs.has(path)) {
+      refs.set(path, { relativePath: path, source: 'body' });
+    }
+  }
+
+  // Check frontmatter banner field - handle both plain path and ![[...]] syntax
+  if (typeof frontmatter.banner === 'string') {
+    let bannerPath = frontmatter.banner.trim();
+    // Strip ![[...]] wrapper if present
+    const wikiMatch = bannerPath.match(/^!\[\[([^\]]+)\]\]$/);
+    if (wikiMatch) {
+      bannerPath = wikiMatch[1].trim();
+    }
+    if (bannerPath.includes('attachments/')) {
+      if (!refs.has(bannerPath)) {
+        refs.set(bannerPath, { relativePath: bannerPath, source: 'frontmatter' });
+      }
+    }
+  }
+
+  return Array.from(refs.values());
+}
+
 /**
  * Parse a markdown file with YAML frontmatter into structured data.
  *

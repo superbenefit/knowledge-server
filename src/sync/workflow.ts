@@ -2,10 +2,10 @@ import { WorkflowEntrypoint, WorkflowStep, WorkflowEvent } from 'cloudflare:work
 import { NonRetryableError } from 'cloudflare:workflows';
 import type { SyncParams } from '../types/sync';
 import { inferContentType } from '../types/content';
-import { generateId, toR2Key } from '../types/storage';
+import { generateId, toR2Key, toAttachmentR2Key } from '../types/storage';
 import type { R2Document } from '../types/storage';
-import { parseMarkdown, shouldSync, resolveContentType } from './parser';
-import { fetchFileContent } from './github';
+import { parseMarkdown, shouldSync, resolveContentType, extractAttachmentRefs } from './parser';
+import { fetchFileContent, fetchBinaryContent, getMimeType } from './github';
 
 /**
  * KnowledgeSyncWorkflow — Cloudflare Workflow that syncs markdown files
@@ -81,12 +81,58 @@ export class KnowledgeSyncWorkflow extends WorkflowEntrypoint<Env, SyncParams> {
           const contentType = resolveContentType(parsed.frontmatter, filePath);
           const id = generateId(filePath);
 
+          // Extract and sync attachment references
+          const attachmentRefs = extractAttachmentRefs(parsed.body, parsed.frontmatter);
+          const syncedAttachments: string[] = [];
+
+          for (const ref of attachmentRefs) {
+            try {
+              const r2Key = toAttachmentR2Key(ref.relativePath);
+
+              // Skip if already stored from this commit
+              const existing = await this.env.KNOWLEDGE.head(r2Key);
+              if (existing?.customMetadata?.commitSha === commitSha) {
+                syncedAttachments.push(r2Key);
+                continue;
+              }
+
+              const binary = await fetchBinaryContent(
+                ref.relativePath,
+                commitSha,
+                this.env.GITHUB_REPO,
+                this.env.GITHUB_TOKEN,
+              );
+
+              const mimeType = getMimeType(ref.relativePath);
+              await this.env.KNOWLEDGE.put(r2Key, binary, {
+                httpMetadata: {
+                  contentType: mimeType,
+                  cacheControl: 'public, max-age=86400',
+                },
+                customMetadata: {
+                  commitSha,
+                  sourceDocument: filePath,
+                },
+              });
+
+              syncedAttachments.push(r2Key);
+              console.log(`Synced attachment: ${r2Key} (${mimeType})`);
+            } catch (err) {
+              // Log but don't fail the document sync for a missing attachment
+              console.error(
+                `Failed to sync attachment ${ref.relativePath}:`,
+                err instanceof Error ? err.message : err,
+              );
+            }
+          }
+
           const r2Doc: R2Document = {
             id,
             contentType,
             path: filePath,
             metadata: parsed.frontmatter,
             content: parsed.body,
+            ...(syncedAttachments.length > 0 ? { attachments: syncedAttachments } : {}),
             syncedAt: new Date().toISOString(),
             commitSha,
           };

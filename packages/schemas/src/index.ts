@@ -57,6 +57,7 @@ export {
   R2DocumentSchema,
   generateId,
   toR2Key,
+  toAttachmentR2Key,
   extractIdFromKey,
   extractContentTypeFromKey,
 } from './storage';

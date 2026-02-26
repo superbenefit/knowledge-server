@@ -97,6 +97,7 @@ export {
   truncateForMetadata,
   generateId,
   toR2Key,
+  toAttachmentR2Key,
   extractIdFromKey,
   extractContentTypeFromKey,
 } from './storage';

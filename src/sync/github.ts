@@ -110,3 +110,145 @@ export async function fetchFileContent(
   // Shouldn't happen for files under 1MB, but handle gracefully
   return data.content;
 }
+
+// ---------------------------------------------------------------------------
+// Binary content helpers (attachments)
+// ---------------------------------------------------------------------------
+
+const MIME_TYPES: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.pdf': 'application/pdf',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+};
+
+/**
+ * Map a file path to a MIME type based on its extension.
+ * Falls back to `application/octet-stream` for unknown extensions.
+ */
+export function getMimeType(filePath: string): string {
+  const ext = filePath.substring(filePath.lastIndexOf('.')).toLowerCase();
+  return MIME_TYPES[ext] || 'application/octet-stream';
+}
+
+/**
+ * Fetch binary file content from the GitHub Contents API (raw mode).
+ *
+ * Uses `Accept: application/vnd.github.v3.raw` to get the raw binary
+ * directly, avoiding base64 encoding overhead.
+ *
+ * For files that are too large for the Contents API (>100 MB), falls back
+ * to the Git Blobs API via the recursive tree endpoint.
+ */
+export async function fetchBinaryContent(
+  filePath: string,
+  commitSha: string,
+  repo: string,
+  token: string,
+): Promise<ArrayBuffer> {
+  const encodedPath = filePath
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  const url = `https://api.github.com/repos/${repo}/contents/${encodedPath}?ref=${commitSha}`;
+
+  const resp = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github.v3.raw',
+      'User-Agent': 'superbenefit-knowledge-server',
+    },
+    signal: AbortSignal.timeout(30000),
+  });
+
+  if (resp.ok) {
+    return resp.arrayBuffer();
+  }
+
+  // On 403 with "too large" hint, fall back to Git Blobs API
+  if (resp.status === 403) {
+    const text = await resp.text();
+    if (text.toLowerCase().includes('too large')) {
+      return fetchBinaryViaBlob(filePath, commitSha, repo, token);
+    }
+    const err = new Error(`GitHub API 403: ${text}`);
+    (err as any).status = 403;
+    throw err;
+  }
+
+  if (resp.status === 404) {
+    const err = new Error(`Attachment not found: ${filePath}`);
+    (err as any).status = 404;
+    throw err;
+  }
+
+  const text = await resp.text();
+  const err = new Error(`GitHub API ${resp.status}: ${text}`);
+  (err as any).status = resp.status;
+  throw err;
+}
+
+/**
+ * Fallback: fetch a binary file via Git Trees + Blobs API when the
+ * Contents API rejects it for being too large.
+ */
+async function fetchBinaryViaBlob(
+  filePath: string,
+  commitSha: string,
+  repo: string,
+  token: string,
+): Promise<ArrayBuffer> {
+  const commonHeaders = {
+    Authorization: `Bearer ${token}`,
+    'User-Agent': 'superbenefit-knowledge-server',
+  };
+
+  // Step 1: Get recursive tree for commit
+  const treeUrl = `https://api.github.com/repos/${repo}/git/trees/${commitSha}?recursive=1`;
+  const treeResp = await fetch(treeUrl, {
+    headers: {
+      ...commonHeaders,
+      Accept: 'application/vnd.github.v3+json',
+    },
+    signal: AbortSignal.timeout(30000),
+  });
+
+  if (!treeResp.ok) {
+    const text = await treeResp.text();
+    throw new Error(`GitHub Trees API ${treeResp.status}: ${text}`);
+  }
+
+  const treeData = (await treeResp.json()) as {
+    tree: Array<{ path: string; sha: string; type: string }>;
+  };
+
+  // Step 2: Find the blob SHA for the file path
+  const entry = treeData.tree.find((e) => e.path === filePath && e.type === 'blob');
+  if (!entry) {
+    const err = new Error(`File not found in tree: ${filePath}`);
+    (err as any).status = 404;
+    throw err;
+  }
+
+  // Step 3: Fetch blob with raw accept header
+  const blobUrl = `https://api.github.com/repos/${repo}/git/blobs/${entry.sha}`;
+  const blobResp = await fetch(blobUrl, {
+    headers: {
+      ...commonHeaders,
+      Accept: 'application/vnd.github.v3.raw',
+    },
+    signal: AbortSignal.timeout(30000),
+  });
+
+  if (!blobResp.ok) {
+    const text = await blobResp.text();
+    throw new Error(`GitHub Blobs API ${blobResp.status}: ${text}`);
+  }
+
+  return blobResp.arrayBuffer();
+}
