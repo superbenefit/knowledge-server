@@ -15,6 +15,21 @@ import {
 } from './schemas';
 
 // ---------------------------------------------------------------------------
+// R2 listing helper
+// ---------------------------------------------------------------------------
+
+async function listR2Objects(bucket: R2Bucket, prefix: string, maxKeys: number): Promise<R2Object[]> {
+  const objects: R2Object[] = [];
+  let cursor: string | undefined;
+  do {
+    const listed = await bucket.list({ prefix, limit: 1000, ...(cursor ? { cursor } : {}) });
+    objects.push(...listed.objects);
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor && objects.length < maxKeys);
+  return objects;
+}
+
+// ---------------------------------------------------------------------------
 // App setup
 // ---------------------------------------------------------------------------
 
@@ -99,23 +114,28 @@ const listEntriesRoute = createRoute({
 api.openapi(listEntriesRoute, async (c) => {
   const { contentType, group, release, sourcePath, limit, offset } = c.req.valid('query');
 
-  // Build R2 list prefix based on contentType filter
-  const prefix = contentType ? `content/${contentType}/` : 'content/';
-
   // Collect R2 object keys with cursor pagination.
   // Cap at a reasonable maximum to prevent OOM on huge buckets.
   const maxKeys = 10000;
+
+  // Determine which prefixes to list based on contentType filter:
+  // - index → indexes/ only
+  // - specific non-index type → content/{type}/ only
+  // - no filter → both content/ and indexes/
   const allObjects: R2Object[] = [];
-  let cursor: string | undefined;
-  do {
-    const listed = await c.env.KNOWLEDGE.list({
-      prefix,
-      limit: 1000,
-      ...(cursor ? { cursor } : {}),
-    });
-    allObjects.push(...listed.objects);
-    cursor = listed.truncated ? listed.cursor : undefined;
-  } while (cursor && allObjects.length < maxKeys);
+  if (contentType === 'index') {
+    const objs = await listR2Objects(c.env.KNOWLEDGE, 'indexes/', maxKeys);
+    allObjects.push(...objs);
+  } else if (contentType) {
+    const objs = await listR2Objects(c.env.KNOWLEDGE, `content/${contentType}/`, maxKeys);
+    allObjects.push(...objs);
+  } else {
+    const [contentObjs, indexObjs] = await Promise.all([
+      listR2Objects(c.env.KNOWLEDGE, 'content/', maxKeys),
+      listR2Objects(c.env.KNOWLEDGE, 'indexes/', maxKeys),
+    ]);
+    allObjects.push(...contentObjs, ...indexObjs);
+  }
 
   // If group/release filters are active, we must fetch metadata to filter.
   // Otherwise, we can determine total from keys and only fetch the page.
