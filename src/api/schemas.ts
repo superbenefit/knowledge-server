@@ -1,82 +1,44 @@
 import { z } from '@hono/zod-openapi';
+import { ContentTypeSchema } from '../types/content';
+import type { ContentType } from '../types/content';
 import {
-  ContentTypeSchema,
-  FileSchema,
-  ResourceSchema,
-  StorySchema,
-  LinkSchema,
-  TagSchema,
-  PatternSchema,
-  PracticeSchema,
-  PrimitiveSchema,
-  ProtocolSchema,
-  QuestionSchema,
-  ArticleSchema,
-  PersonSchema,
-  GroupSchema,
-  ProjectSchema,
-  PlaceSchema,
-  GatheringSchema,
-} from '../types/content';
-import { R2DocumentSchema } from '../types/storage';
-import {
-  ListParamsSchema,
-  SearchParamsSchema,
-  SearchResultSchema,
-  ErrorResponseSchema,
-  EntryResponseSchema,
   EntryListResponseSchema,
+  EntryResponseSchema,
   SearchResponseSchema,
+  ErrorResponseSchema,
 } from '../types/api';
 
 // ---------------------------------------------------------------------------
-// OpenAPI component name registrations
-// Moved here from type files so schemas package stays free of @hono/zod-openapi
-// ---------------------------------------------------------------------------
-
-// Content schemas
-ContentTypeSchema.openapi('ContentType');
-FileSchema.openapi('FileFrontmatter');
-ResourceSchema.openapi('ResourceFrontmatter');
-StorySchema.openapi('StoryFrontmatter');
-LinkSchema.openapi('LinkFrontmatter');
-TagSchema.openapi('TagFrontmatter');
-PatternSchema.openapi('PatternFrontmatter');
-PracticeSchema.openapi('PracticeFrontmatter');
-PrimitiveSchema.openapi('PrimitiveFrontmatter');
-ProtocolSchema.openapi('ProtocolFrontmatter');
-QuestionSchema.openapi('QuestionFrontmatter');
-ArticleSchema.openapi('ArticleFrontmatter');
-PersonSchema.openapi('PersonFrontmatter');
-GroupSchema.openapi('GroupFrontmatter');
-ProjectSchema.openapi('ProjectFrontmatter');
-PlaceSchema.openapi('PlaceFrontmatter');
-GatheringSchema.openapi('GatheringFrontmatter');
-
-// Storage schemas
-R2DocumentSchema.openapi('R2Document');
-
-// API schemas
-ListParamsSchema.openapi('ListParams');
-SearchParamsSchema.openapi('SearchParams');
-SearchResultSchema.openapi('SearchResult');
-ErrorResponseSchema.openapi('ErrorResponse');
-EntryResponseSchema.openapi('EntryResponse');
-EntryListResponseSchema.openapi('EntryListResponse');
-SearchResponseSchema.openapi('SearchResponse');
-
-// ---------------------------------------------------------------------------
-// Route-level parameter schemas
+// Route-level parameter schemas — built with hono's z for .openapi() support
 // ---------------------------------------------------------------------------
 
 export const EntryParamsSchema = z.object({
-  contentType: ContentTypeSchema.openapi({ param: { name: 'contentType', in: 'path' } }),
+  contentType: z.enum(ContentTypeSchema.options as [ContentType, ...ContentType[]])
+    .openapi({ param: { name: 'contentType', in: 'path' } }),
   id: z.string().min(1).openapi({ param: { name: 'id', in: 'path' } }),
 });
 
-export const ListQuerySchema = ListParamsSchema.openapi('ListQuery');
+export const ListQuerySchema = z.object({
+  contentType: z.enum(ContentTypeSchema.options as [ContentType, ...ContentType[]]).optional()
+    .openapi({ param: { name: 'contentType', in: 'query' } }),
+  group: z.string().optional().openapi({ param: { name: 'group', in: 'query' } }),
+  release: z.string().optional().openapi({ param: { name: 'release', in: 'query' } }),
+  sourcePath: z.string().optional().openapi({ param: { name: 'sourcePath', in: 'query' } }),
+  limit: z.coerce.number().min(1).max(100).default(20)
+    .openapi({ param: { name: 'limit', in: 'query' } }),
+  offset: z.coerce.number().min(0).default(0)
+    .openapi({ param: { name: 'offset', in: 'query' } }),
+});
 
-export const SearchQuerySchema = SearchParamsSchema.openapi('SearchQuery');
+export const SearchQuerySchema = z.object({
+  q: z.string().min(1).max(5000).openapi({ param: { name: 'q', in: 'query' } }),
+  contentType: z.enum(ContentTypeSchema.options as [ContentType, ...ContentType[]]).optional()
+    .openapi({ param: { name: 'contentType', in: 'query' } }),
+  group: z.string().optional().openapi({ param: { name: 'group', in: 'query' } }),
+  release: z.string().optional().openapi({ param: { name: 'release', in: 'query' } }),
+  limit: z.coerce.number().min(1).max(20).default(5)
+    .openapi({ param: { name: 'limit', in: 'query' } }),
+});
 
 // ---------------------------------------------------------------------------
 // Re-export response schemas for route definitions
