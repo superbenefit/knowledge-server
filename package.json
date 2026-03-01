@@ -16,7 +16,11 @@
 		"test": "vitest run",
 		"bootstrap": "npx tsx scripts/bootstrap-sync.ts"
 	},
+	"overrides": {
+		"@modelcontextprotocol/sdk": "^1.26.0"
+	},
 	"dependencies": {
+		"agents": "^0.6.0",
 		"@hono/zod-openapi": "^1.2.0",
 		"@superbenefit/knowledge-schemas": "*",
 		"@scalar/hono-api-reference": "^0.9.44",

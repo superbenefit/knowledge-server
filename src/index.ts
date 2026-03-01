@@ -3,11 +3,13 @@
  *
  * Extends WorkerEntrypoint to provide:
  * - HTTP routing: /api/v1/*, /webhook
- * - Queue consumer for Vectorize indexing
+ * - MCP endpoint at /mcp (stateless, read-only tools)
  * - RPC methods for inter-Worker service binding calls
  */
 
 import { WorkerEntrypoint } from 'cloudflare:workers';
+import { createMcpHandler } from 'agents/mcp';
+import { createMcpServer } from './mcp/server';
 import { Hono } from 'hono';
 import { api } from './api/routes';
 import { verifyWebhookSignature, isExcluded } from './sync/github';
@@ -90,6 +92,7 @@ a:hover{border-color:#3f3f46;background:#1f1f23}
     <a href="/api/v1/entries"><span class="dot dot-blue"></span><span><span class="label">Entries</span><br><span class="path">/api/v1/entries</span></span></a>
     <a href="/api/v1/search?q=governance"><span class="dot dot-blue"></span><span><span class="label">Search</span><br><span class="path">/api/v1/search?q=…</span></span></a>
     <a href="/api/v1/health"><span class="dot dot-green"></span><span><span class="label">Health</span><br><span class="path">/api/v1/health</span></span></a>
+    <a href="/mcp"><span class="dot dot-purple"></span><span><span class="label">MCP Server</span><br><span class="path">/mcp</span></span></a>
   </div>
   <div class="footer">Part of the <a href="https://superbenefit.org">SuperBenefit</a> knowledge stack</div>
 </div>
@@ -119,6 +122,22 @@ export default class KnowledgeServer extends WorkerEntrypoint<Env> {
         status: 429,
         headers: { 'Content-Type': 'application/json', 'Retry-After': '60', ...SECURITY_HEADERS },
       });
+    }
+
+    // MCP endpoint — stateless, new server per request
+    if (url.pathname.startsWith('/mcp')) {
+      const server = createMcpServer(this.env);
+      const handler = createMcpHandler(server, {
+        route: '/mcp',
+        corsOptions: {
+          origin: '*',
+          methods: 'GET, POST, OPTIONS',
+          headers: 'Content-Type, Mcp-Session-Id',
+        },
+      });
+      const res = await handler(request, this.env, this.ctx);
+      Object.entries(SECURITY_HEADERS).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
     }
 
     // GitHub webhook
