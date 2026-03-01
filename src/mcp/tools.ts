@@ -192,7 +192,7 @@ export function registerTools(server: McpServer, env: Env): void {
       filters: SearchFiltersSchema.optional(),
     },
     async ({ query, filters }) => {
-      const results = await searchKnowledge(query, filters || {}, { includeDocuments: true }, env);
+      const results = await searchKnowledge(query, filters || {}, {}, env);
       return { content: [{ type: 'text', text: JSON.stringify(results, null, 2) }] };
     },
   );

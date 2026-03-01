@@ -13,8 +13,8 @@ import { searchViaAiSearch } from './search';
 export async function searchKnowledge(
   query: string,
   filters: SearchFilters,
-  _options: { includeDocuments?: boolean } = {},
+  options: { limit?: number } = {},
   env: Env,
 ): Promise<SearchResult[]> {
-  return searchViaAiSearch(query, { contentType: filters.contentType }, env);
+  return searchViaAiSearch(query, { contentType: filters.contentType }, options.limit ?? 10, env);
 }

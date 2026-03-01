@@ -33,7 +33,24 @@ async function listR2Objects(bucket: R2Bucket, prefix: string, maxKeys: number):
 // App setup
 // ---------------------------------------------------------------------------
 
-export const api = new OpenAPIHono<{ Bindings: Env }>();
+export const api = new OpenAPIHono<{ Bindings: Env }>({
+  defaultHook: (result, c) => {
+    if (!result.success) {
+      const firstIssue = result.error.issues[0];
+      return c.json(
+        {
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: firstIssue
+              ? `${firstIssue.path.join('.')}: ${firstIssue.message}`
+              : 'Invalid request',
+          },
+        },
+        400,
+      );
+    }
+  },
+});
 
 // Global error handler (spec section 10)
 api.onError((err, c) => {
@@ -90,7 +107,7 @@ const healthRoute = createRoute({
 });
 
 api.openapi(healthRoute, async (c) => {
-  return c.json({ status: 'ok' }, 200);
+  return c.json({ status: 'ok' }, 200, CACHE_HEADERS);
 });
 
 // ---------------------------------------------------------------------------
@@ -256,19 +273,22 @@ api.openapi(searchRoute, async (c) => {
   const results = await searchKnowledge(
     q,
     { contentType, group, release },
-    {},
+    { limit },
     c.env,
   );
 
-  // Apply limit to results
-  const limitedResults = results.slice(0, limit);
-
-  return c.json({ results: limitedResults }, 200, CACHE_HEADERS);
+  return c.json({ results }, 200, CACHE_HEADERS);
 });
 
 // ---------------------------------------------------------------------------
 // GET /openapi.json — auto-generated OpenAPI spec
 // ---------------------------------------------------------------------------
+
+// Cache middleware for OpenAPI spec
+api.use('/openapi.json', async (c, next) => {
+  await next();
+  c.header('Cache-Control', CACHE_HEADERS['Cache-Control']);
+});
 
 api.doc('/openapi.json', {
   openapi: '3.1.0',

@@ -234,9 +234,9 @@ export default class KnowledgeServer extends WorkerEntrypoint<Env> {
     if (params.group) filters.group = params.group;
     if (params.release) filters.release = params.release;
 
-    const items = await searchKnowledge(params.query, filters, {}, this.env);
-    const limited = params.limit ? items.slice(0, params.limit) : items;
-    return { items: limited, total: items.length };
+    const limit = params.limit ?? 10;
+    const items = await searchKnowledge(params.query, filters, { limit }, this.env);
+    return { items, total: items.length };
   }
 
   /**
