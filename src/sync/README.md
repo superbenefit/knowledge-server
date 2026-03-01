@@ -39,7 +39,7 @@ graph LR
 
     WF -->|deleted files| Del["R2.delete()<br/>inferContentType + generateId"]
 
-    Store -->|R2 event| Queue["Queue → Vectorize<br/>(see consumers/)"]
+    Store -->|stored| R2["R2 Bucket"]
 ```
 
 ## File-by-File Reference
@@ -249,6 +249,5 @@ See [types](../types/) for full definitions.
 ## Cross-References
 
 - [types](../types/) — `SyncParams`, `R2Document`, `ParsedMarkdown`, `ContentType` definitions
-- [consumers](../consumers/) — Queue consumer that processes R2 events after sync writes
 - [index](../) — `handleWebhook()` function and `KnowledgeSyncWorkflow` re-export
 - `docs/spec.md` section 5 — Full sync pipeline specification
