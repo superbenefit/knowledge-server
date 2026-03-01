@@ -79,7 +79,6 @@ export type {
 
 // Storage (spec section 4)
 export {
-  VECTORIZE_LIMITS,
   R2DocumentSchema,
   generateId,
   toR2Key,
@@ -90,7 +89,7 @@ export type { R2Document } from './storage';
 
 // Sync (spec section 5)
 export { SyncParamsSchema } from './sync';
-export type { SyncParams, R2EventNotification, GitHubPushEvent, ParsedMarkdown } from './sync';
+export type { SyncParams, GitHubPushEvent, ParsedMarkdown } from './sync';
 
 // RPC (spec v0.17)
 export type {

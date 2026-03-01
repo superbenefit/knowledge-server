@@ -13,26 +13,6 @@ export const SyncParamsSchema = z.object({
 export type SyncParams = z.infer<typeof SyncParamsSchema>;
 
 // ---------------------------------------------------------------------------
-// R2 event notification payload (spec section 5.3)
-// ---------------------------------------------------------------------------
-
-export interface R2EventNotification {
-  account: string;
-  action: 'PutObject' | 'CopyObject' | 'CompleteMultipartUpload' | 'DeleteObject' | 'LifecycleDeletion';
-  bucket: string;
-  object: {
-    key: string;
-    size?: number;    // absent on delete events
-    eTag?: string;    // absent on delete events
-  };
-  eventTime: string;
-  copySource?: {
-    bucket: string;
-    object: string;
-  };
-}
-
-// ---------------------------------------------------------------------------
 // GitHub webhook push event (subset of fields we use)
 // ---------------------------------------------------------------------------
 
