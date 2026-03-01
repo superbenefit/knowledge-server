@@ -2,26 +2,20 @@
  * Main entry point for the SuperBenefit Knowledge Server.
  *
  * Extends WorkerEntrypoint to provide:
- * - HTTP routing: /api/v1/*, /mcp, /webhook
+ * - HTTP routing: /api/v1/*, /webhook
  * - Queue consumer for Vectorize indexing
  * - RPC methods for inter-Worker service binding calls
- *
- * Phase 1: No authentication. All tools/RPC are Open tier.
- * Phase 2: Add Access JWT parsing before MCP dispatch.
  */
 
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { Hono } from 'hono';
-import { createMcpHandler } from 'agents/mcp';
 import { api } from './api/routes';
-import { createMcpServer } from './mcp/server';
 import { handleVectorizeQueue } from './consumers/vectorize';
 import { verifyWebhookSignature, isExcluded } from './sync/github';
 import { SECURITY_HEADERS } from '@superbenefit/porch/security';
 import { searchKnowledge, getDocument, getDocumentByPath } from './retrieval';
-import { listGroups, listReleases, getTermDefinition } from './mcp/tools';
 import type { GitHubPushEvent } from './types/sync';
-import type { SearchFilters, R2Document } from './types';
+import type { SearchFilters, R2Document, ContentType } from './types';
 import type {
   SearchKnowledgeParams,
   SearchKnowledgeResult,
@@ -53,7 +47,6 @@ app.get('/', (c) => {
         api: '/api/v1',
         docs: '/api/v1/docs',
         openapi: '/api/v1/openapi.json',
-        mcp: '/mcp',
         health: '/api/v1/health',
       },
     });
@@ -90,7 +83,7 @@ a:hover{border-color:#3f3f46;background:#1f1f23}
 <body>
 <div class="container">
   <h1>Knowledge Server<span class="version">v0.1.0</span></h1>
-  <p class="subtitle">SuperBenefit knowledge base — public read-only API and MCP server</p>
+  <p class="subtitle">SuperBenefit knowledge base — public read-only API</p>
   <div class="section">
     <div class="section-title">Endpoints</div>
     <a href="/api/v1/docs"><span class="dot dot-green"></span><span><span class="label">API Documentation</span><br><span class="path">/api/v1/docs</span></span></a>
@@ -98,10 +91,6 @@ a:hover{border-color:#3f3f46;background:#1f1f23}
     <a href="/api/v1/entries"><span class="dot dot-blue"></span><span><span class="label">Entries</span><br><span class="path">/api/v1/entries</span></span></a>
     <a href="/api/v1/search?q=governance"><span class="dot dot-blue"></span><span><span class="label">Search</span><br><span class="path">/api/v1/search?q=…</span></span></a>
     <a href="/api/v1/health"><span class="dot dot-green"></span><span><span class="label">Health</span><br><span class="path">/api/v1/health</span></span></a>
-  </div>
-  <div class="section">
-    <div class="section-title">MCP</div>
-    <a href="/mcp"><span class="dot dot-purple"></span><span><span class="label">MCP Server</span><br><span class="path">/mcp</span></span></a>
   </div>
   <div class="footer">Part of the <a href="https://superbenefit.org">SuperBenefit</a> knowledge stack</div>
 </div>
@@ -131,28 +120,6 @@ export default class KnowledgeServer extends WorkerEntrypoint<Env> {
         status: 429,
         headers: { 'Content-Type': 'application/json', 'Retry-After': '60', ...SECURITY_HEADERS },
       });
-    }
-
-    // MCP server — created per-request (WorkerEntrypoint: this.env unavailable at module scope)
-    if (url.pathname === '/mcp' || url.pathname.startsWith('/mcp/')) {
-      const server = createMcpServer(this.env);
-      const handler = createMcpHandler(server, {
-        route: '/mcp',
-        corsOptions: {
-          origin: '*',
-          // Security: DELETE removed until Phase 3 auth is implemented
-          methods: 'GET, POST, OPTIONS',
-          headers: 'Content-Type, Accept, Authorization, Mcp-Session-Id',
-        },
-      });
-      const response = await handler(request, this.env, this.ctx);
-
-      // Inject security headers into MCP response
-      const securedResponse = new Response(response.body, response);
-      for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
-        securedResponse.headers.set(key, value);
-      }
-      return securedResponse;
     }
 
     // GitHub webhook
@@ -288,7 +255,27 @@ export default class KnowledgeServer extends WorkerEntrypoint<Env> {
    * List all groups/cells in the SuperBenefit ecosystem.
    */
   async listGroups(): Promise<ListGroupsResult> {
-    const groups = await listGroups(this.env);
+    const prefix = 'content/group/';
+    const allObjects: R2Object[] = [];
+    let cursor: string | undefined;
+    do {
+      const listed = await this.env.KNOWLEDGE.list({ prefix, ...(cursor ? { cursor } : {}) });
+      allObjects.push(...listed.objects);
+      cursor = listed.truncated ? listed.cursor : undefined;
+    } while (cursor);
+
+    const groups: Array<{ id: string; title: string; description?: string }> = [];
+    for (const obj of allObjects) {
+      const data = await this.env.KNOWLEDGE.get(obj.key);
+      if (data) {
+        const doc: R2Document = await data.json();
+        groups.push({
+          id: doc.id,
+          title: (doc.metadata.title as string) || doc.id,
+          description: doc.metadata.description as string,
+        });
+      }
+    }
     return { groups };
   }
 
@@ -296,8 +283,31 @@ export default class KnowledgeServer extends WorkerEntrypoint<Env> {
    * List all creative releases with metadata.
    */
   async listReleases(): Promise<ListReleasesResult> {
-    const releases = await listReleases(this.env);
-    return { releases };
+    const prefix = 'content/';
+    const allObjects: R2Object[] = [];
+    let cursor: string | undefined;
+    do {
+      const listed = await this.env.KNOWLEDGE.list({ prefix, ...(cursor ? { cursor } : {}) });
+      allObjects.push(...listed.objects);
+      cursor = listed.truncated ? listed.cursor : undefined;
+    } while (cursor);
+
+    const releaseSet = new Map<string, { id: string; title: string; description?: string }>();
+    for (const obj of allObjects) {
+      const data = await this.env.KNOWLEDGE.get(obj.key);
+      if (data) {
+        const doc: R2Document = await data.json();
+        const release = doc.metadata.release as string;
+        if (release && !releaseSet.has(release)) {
+          releaseSet.set(release, {
+            id: release,
+            title: release,
+            description: `Creative release: ${release}`,
+          });
+        }
+      }
+    }
+    return { releases: Array.from(releaseSet.values()) };
   }
 
   /**
@@ -307,7 +317,11 @@ export default class KnowledgeServer extends WorkerEntrypoint<Env> {
     if (!params?.term || typeof params.term !== 'string' || params.term.trim() === '') {
       throw new Error('RPC defineTerm: term is required');
     }
-    const definition = await getTermDefinition(params.term, this.env);
+    const tagId = params.term.toLowerCase().replace(/\s+/g, '-');
+    const doc = await getDocument('tag' as ContentType, tagId, this.env);
+    const definition = doc
+      ? (doc.metadata.description as string) || doc.content
+      : null;
     return { term: params.term, definition };
   }
 }

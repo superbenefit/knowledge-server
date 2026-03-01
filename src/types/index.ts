@@ -58,15 +58,6 @@ export type {
   Content,
 } from './content';
 
-// Auth — porch access control framework (spec section 2)
-export {
-  AccessTierSchema,
-  TIER_LEVEL,
-  IdentitySchema,
-  AuthContextSchema,
-} from '@superbenefit/porch/auth';
-export type { AccessTier, Identity, AuthContext, HatsRole } from '@superbenefit/porch/auth';
-
 // API (spec sections 6, 8)
 export {
   SearchFiltersSchema,
