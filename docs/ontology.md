@@ -693,31 +693,6 @@ export function inferContentType(path: string): ContentType {
 }
 ```
 
-### Vectorize Metadata Indexes
-
-Vectorize supports up to 10 indexed metadata fields for filtering. Only published content is synced, so `publish`/`draft` are not needed.
-
-```bash
-# Create indexes (must be created BEFORE inserting vectors)
-npx wrangler vectorize create-metadata-index superbenefit-knowledge --property-name=contentType --type=string
-npx wrangler vectorize create-metadata-index superbenefit-knowledge --property-name=group --type=string
-npx wrangler vectorize create-metadata-index superbenefit-knowledge --property-name=tags --type=string
-npx wrangler vectorize create-metadata-index superbenefit-knowledge --property-name=release --type=string
-npx wrangler vectorize create-metadata-index superbenefit-knowledge --property-name=status --type=string
-npx wrangler vectorize create-metadata-index superbenefit-knowledge --property-name=date --type=number
-```
-
-| Field | Type | Purpose |
-|-------|------|---------|
-| `contentType` | string | Filter by type (pattern, tag, etc.) |
-| `group` | string | Filter by cell/project |
-| `tags` | string | Filter by tags |
-| `release` | string | Filter by creative release |
-| `status` | string | Filter projects by status |
-| `date` | number | Sort by date (timestamp) |
-
----
-
 ## JSON-LD Context (Future)
 
 For semantic web interoperability:

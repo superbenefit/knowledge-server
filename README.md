@@ -6,7 +6,7 @@ MCP server + public REST API for SuperBenefit's knowledge base.
 
 - **MCP Server** — AI tools (search, define, browse) via Model Context Protocol
 - **REST API** — Read-only public API for web and external integrations
-- **GitHub Sync** — Syncs knowledge base from GitHub to R2 to Vectorize
+- **GitHub Sync** — Syncs knowledge base from GitHub to R2 via Workflows
 
 ## Architecture
 
@@ -14,7 +14,7 @@ MCP server + public REST API for SuperBenefit's knowledge base.
 GitHub (superbenefit/knowledge-base)
          │ push webhook
          ▼
-Sync Layer: Webhook → Workflow → R2 → Event → Queue → Vectorize
+Sync Layer: Webhook → Workflow → R2
          │
          ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -29,7 +29,7 @@ Sync Layer: Webhook → Workflow → R2 → Event → Queue → Vectorize
 │    searchKnowledge · getDocument · listGroups               │
 │    listReleases · defineTerm                                │
 │                                                             │
-│  Queue: R2 event notifications → Vectorize indexing         │
+│  Search: AI Search (AutoRAG) over R2 content                │
 │                                                             │
 │  Access: resolveAuthContext() → checkTierAccess()           │
 │  Phase 1: All tools Open tier (no auth)                     │
@@ -40,9 +40,8 @@ Sync Layer: Webhook → Workflow → R2 → Event → Queue → Vectorize
 
 - [Cloudflare Workers](https://developers.cloudflare.com/workers/) — Runtime
 - [Hono](https://hono.dev/) + [@hono/zod-openapi](https://github.com/honojs/middleware/tree/main/packages/zod-openapi) — HTTP routing + OpenAPI
-- [Vectorize](https://developers.cloudflare.com/vectorize/) — Semantic search
+- [AI Search (AutoRAG)](https://developers.cloudflare.com/ai-search/) — Semantic search
 - [R2](https://developers.cloudflare.com/r2/) — Content storage
-- [Queues](https://developers.cloudflare.com/queues/) — Event-driven indexing
 - [MCP SDK](https://github.com/modelcontextprotocol/typescript-sdk) + [Agents SDK](https://github.com/cloudflare/agents) — MCP server
 
 ## Quick Start
@@ -76,13 +75,12 @@ curl -I -X OPTIONS http://localhost:8788/api/v1/entries \
 
 ```
 src/
-├── index.ts              # WorkerEntrypoint class (HTTP, queue, RPC)
+├── index.ts              # WorkerEntrypoint class (HTTP, webhook, RPC)
 ├── types/                # Type system + content ontology + RPC types
 ├── api/                  # REST API routes + OpenAPI
 ├── mcp/                  # MCP server (tools, resources, prompts)
-├── retrieval/            # Three-stage search pipeline
+├── retrieval/            # Search via AI Search (AutoRAG)
 ├── sync/                 # GitHub sync workflow + markdown parsing
-└── consumers/            # Queue consumer (R2 → Vectorize)
 ```
 
 ## Documentation

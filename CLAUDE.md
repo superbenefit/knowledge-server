@@ -5,7 +5,8 @@
 Building an MCP server + public REST API for SuperBenefit DAO that:
 - Serves knowledge base search tools via MCP
 - Exposes read-only REST API for web/external access
-- Syncs from GitHub to R2 to Vectorize
+- Syncs from GitHub to R2 via Workflows
+- Searches via AI Search (AutoRAG)
 - Uses porch access control framework (Phase 1: Open tier, no auth)
 
 **Phase 1 (current):** All tools are Open tier — no authentication required.
@@ -17,9 +18,8 @@ Building an MCP server + public REST API for SuperBenefit DAO that:
 - Cloudflare Workers (`WorkerEntrypoint` class with RPC methods + HTTP handlers)
 - Hono for HTTP routing + REST API
 - @hono/zod-openapi for OpenAPI generation
-- Vectorize for semantic search
+- AI Search (AutoRAG) for semantic search over R2 content
 - R2 for content storage
-- Queues for event-driven indexing
 - `@superbenefit/porch` (local `file:../mcporch`) for shared auth, security headers
 
 ## Code Standards
@@ -60,9 +60,6 @@ server.tool('my_tool', 'description', { param: z.string() },
 
 ### Common Mistakes to Avoid
 
-- ❌ Per-document reranker calls → ✅ Batch API with `contexts` array
-- ❌ `batch.ackAll()` for queues → ✅ Per-message `msg.ack()`
-- ❌ `topK: 100` with full metadata → ✅ Max 20, use 'indexed' for more
 - ❌ R2 bucket CORS config for API → ✅ Hono middleware handles CORS
 - ❌ Local auth files (`src/auth/`) → ✅ Import from `@superbenefit/porch/auth`
 
@@ -70,17 +67,17 @@ server.tool('my_tool', 'description', { param: z.string() },
 
 ```
 src/
-├── index.ts              # WorkerEntrypoint class (HTTP, queue, webhook, RPC methods)
+├── index.ts              # WorkerEntrypoint class (HTTP, webhook, RPC methods)
 ├── types/
 │   ├── index.ts          # Re-exports all types (auth from @superbenefit/porch/auth)
 │   ├── content.ts        # 21 content type schemas, PATH_TYPE_MAP, inferContentType
-│   ├── api.ts            # API request/response types
-│   ├── storage.ts        # R2Document, VectorizeMetadata
-│   ├── sync.ts           # SyncParams, R2EventNotification
+│   ├── api.ts            # API request/response types (re-exports from @superbenefit/knowledge-schemas)
+│   ├── storage.ts        # R2Document, key helpers (re-exports from @superbenefit/knowledge-schemas)
+│   ├── sync.ts           # SyncParams, GitHubPushEvent
 │   └── rpc.ts            # RPC parameter/result types for service binding consumers
 ├── api/                  # Public REST API
 │   ├── routes.ts         # Hono + OpenAPI routes (health, entries, search, openapi)
-│   └── schemas.ts        # Zod schemas
+│   └── schemas.ts        # Zod schemas for route params/queries
 ├── mcp/
 │   ├── server.ts         # createMcpServer factory
 │   ├── tools.ts          # MCP tool registrations (auth from @superbenefit/porch/auth)
@@ -90,11 +87,10 @@ src/
 │   ├── workflow.ts       # GitHub sync workflow
 │   ├── github.ts         # Webhook verification, file fetching
 │   └── parser.ts         # Markdown parsing
-├── consumers/
-│   └── vectorize.ts      # Queue consumer
 └── retrieval/
-    ├── search.ts         # Vectorize queries
-    └── rerank.ts         # BGE reranker
+    ├── index.ts          # searchKnowledge() entry point
+    ├── search.ts         # AI Search (AutoRAG) queries
+    └── fetch.ts          # R2 document fetching
 ```
 
 > **No `src/auth/` directory** — auth lives in `@superbenefit/porch/auth` (mcporch repo).
@@ -113,28 +109,29 @@ const authContext = await resolveAuthContext(env);
 const access = checkTierAccess('open', authContext);
 ```
 
-### Two-Stage Retrieval
+### AI Search (AutoRAG)
 
 ```typescript
-// Stage 1: Vectorize with metadata filter
-const results = await env.VECTORIZE.query(embedding, {
-  topK: 20,
-  filter: { contentType: 'article' },
-  returnMetadata: 'all'
+// Search via AI Search — searches R2 content directly
+const result = await env.AI.autorag('knowledge-search').search({
+  query: searchQuery,
+  rewrite_query: true,
 });
 
-// Stage 2: Batch rerank
-const reranked = await env.AI.run('@cf/baai/bge-reranker-base', {
-  query: searchQuery,
-  contexts: results.map(r => ({ text: r.content })),
-  top_k: 10
-});
+// Map sources to SearchResult shape
+const results = result.data.map(source => ({
+  id: extractIdFromKey(source.filename),
+  contentType: extractContentTypeFromKey(source.filename),
+  title: id.replace(/-/g, ' '),
+  description: source.content?.[0]?.text?.slice(0, 500) || '',
+  score: source.score,
+}));
 ```
 
 ### WorkerEntrypoint + Router Integration
 
 ```typescript
-// src/index.ts — WorkerEntrypoint with HTTP routing, queue, and RPC
+// src/index.ts — WorkerEntrypoint with HTTP routing and RPC
 import { WorkerEntrypoint } from 'cloudflare:workers';
 
 export default class KnowledgeServer extends WorkerEntrypoint<Env> {
@@ -142,7 +139,6 @@ export default class KnowledgeServer extends WorkerEntrypoint<Env> {
     // Rate limiting → MCP → webhook → Hono (REST API)
     // Uses this.env / this.ctx (not function args)
   }
-  async queue(batch: MessageBatch<unknown>): Promise<void> { ... }
   private async handleWebhook(request: Request): Promise<Response> { ... }
 
   // RPC methods — callable via service bindings from other Workers
@@ -180,10 +176,7 @@ curl -I -X OPTIONS http://localhost:8788/api/v1/entries \
 
 ## Important Constraints
 
-- `compatibility_date`: "2025-03-07" or later for agents SDK
-- Queue consumers: per-message `msg.ack()`, not `batch.ackAll()`
-- R2 events have no ordering guarantee — use idempotent operations
-- Vectorize metadata indexes must be created BEFORE inserting vectors
+- `compatibility_date`: "2026-02-01" or later for agents SDK
 
 ## Compaction Rules
 
