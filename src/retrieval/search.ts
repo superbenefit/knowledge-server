@@ -11,28 +11,30 @@ import { extractIdFromKey, extractContentTypeFromKey } from '../types/storage';
 export async function searchViaAiSearch(
   query: string,
   filters: { contentType?: ContentType },
+  limit: number,
   env: Env,
 ): Promise<SearchResult[]> {
-  const result = await env.AI.autorag('knowledge-search').search({
+  const searchParams: AutoRagSearchRequest = {
     query,
     rewrite_query: true,
-  });
+    max_num_results: limit,
+  };
+
+  // Pre-filter via AutoRAG's native Vectorize metadata filter
+  if (filters.contentType) {
+    const folder = filters.contentType === 'index'
+      ? 'indexes/'
+      : `content/${filters.contentType}/`;
+    searchParams.filters = { type: 'eq', key: 'folder', value: folder };
+  }
+
+  const result = await env.AI.autorag('knowledge-search').search(searchParams);
 
   if (!result.data?.length) {
     return [];
   }
 
-  let sources = result.data;
-
-  // Filter by contentType if specified (match against R2 key prefix)
-  if (filters.contentType) {
-    const prefix = filters.contentType === 'index'
-      ? 'indexes/'
-      : `content/${filters.contentType}/`;
-    sources = sources.filter((s) => s.filename.startsWith(prefix));
-  }
-
-  return sources.map((source) => {
+  return result.data.map((source) => {
     const id = extractIdFromKey(source.filename);
     const contentType = extractContentTypeFromKey(source.filename);
     // Use first content chunk as description
