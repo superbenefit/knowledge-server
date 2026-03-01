@@ -233,7 +233,7 @@ api.openapi(getEntryRoute, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /search — semantic search (stubbed)
+// GET /search — AI Search
 // ---------------------------------------------------------------------------
 
 const searchRoute = createRoute({
@@ -260,7 +260,7 @@ api.openapi(searchRoute, async (c) => {
     c.env,
   );
 
-  // Apply limit to results (Vectorize already limits to 20, this allows smaller sets)
+  // Apply limit to results
   const limitedResults = results.slice(0, limit);
 
   return c.json({ results: limitedResults }, 200, CACHE_HEADERS);

@@ -58,22 +58,12 @@ export type {
   Content,
 } from './content';
 
-// Auth — porch access control framework (spec section 2)
-export {
-  AccessTierSchema,
-  TIER_LEVEL,
-  IdentitySchema,
-  AuthContextSchema,
-} from '@superbenefit/porch/auth';
-export type { AccessTier, Identity, AuthContext, HatsRole } from '@superbenefit/porch/auth';
-
 // API (spec sections 6, 8)
 export {
   SearchFiltersSchema,
   ListParamsSchema,
   SearchParamsSchema,
   SearchResultSchema,
-  RerankResultSchema,
   ErrorResponseSchema,
   EntryResponseSchema,
   EntryListResponseSchema,
@@ -84,27 +74,22 @@ export type {
   ListParams,
   SearchParams,
   SearchResult,
-  RerankResult,
   ErrorResponse,
 } from './api';
 
 // Storage (spec section 4)
 export {
-  VECTORIZE_LIMITS,
-  VECTORIZE_NAMESPACE,
   R2DocumentSchema,
-  VectorizeMetadataSchema,
-  truncateForMetadata,
   generateId,
   toR2Key,
   extractIdFromKey,
   extractContentTypeFromKey,
 } from './storage';
-export type { R2Document, VectorizeMetadata } from './storage';
+export type { R2Document } from './storage';
 
 // Sync (spec section 5)
 export { SyncParamsSchema } from './sync';
-export type { SyncParams, R2EventNotification, GitHubPushEvent, ParsedMarkdown } from './sync';
+export type { SyncParams, GitHubPushEvent, ParsedMarkdown } from './sync';
 
 // RPC (spec v0.17)
 export type {

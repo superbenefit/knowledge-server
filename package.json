@@ -16,12 +16,15 @@
 		"test": "vitest run",
 		"bootstrap": "npx tsx scripts/bootstrap-sync.ts"
 	},
+	"overrides": {
+		"@modelcontextprotocol/sdk": "^1.26.0"
+	},
 	"dependencies": {
+		"agents": "^0.6.0",
 		"@hono/zod-openapi": "^1.2.0",
 		"@superbenefit/knowledge-schemas": "*",
 		"@scalar/hono-api-reference": "^0.9.44",
 		"@superbenefit/porch": "github:superbenefit/mcporch",
-		"agents": "^0.3.6",
 		"hono": "^4.11.9",
 		"yaml": "^2.8.2",
 		"zod": "^4.3.6"
@@ -32,8 +35,5 @@
 		"typescript": "5.9.3",
 		"vitest": "^3.0.0",
 		"wrangler": "^4.61.1"
-	},
-	"overrides": {
-		"@modelcontextprotocol/sdk": "^1.26.0"
 	}
 }

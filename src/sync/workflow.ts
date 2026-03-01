@@ -121,5 +121,30 @@ export class KnowledgeSyncWorkflow extends WorkflowEntrypoint<Env, SyncParams> {
         },
       );
     }
+
+    // Trigger AI Search reindex after all sync steps complete.
+    // Non-fatal — AI Search auto-reindexes every 6h anyway.
+    await step.do(
+      'trigger-ai-search-reindex',
+      {
+        retries: { limit: 2, delay: '30 seconds', backoff: 'constant' },
+        timeout: '30 seconds',
+      },
+      async () => {
+        const url = `https://api.cloudflare.com/client/v4/accounts/${this.env.CF_ACCOUNT_ID}/ai-search/instances/knowledge-search/jobs`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${this.env.AI_SEARCH_API_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        if (!res.ok) {
+          console.warn(`AI Search reindex trigger failed: ${res.status} ${res.statusText}`);
+        } else {
+          console.log('AI Search reindex triggered');
+        }
+      },
+    );
   }
 }

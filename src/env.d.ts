@@ -8,16 +8,14 @@ declare namespace Cloudflare {
     GITHUB_TOKEN: string;
     GITHUB_WEBHOOK_SECRET: string;
     GITHUB_REPO: string;
+    AI_SEARCH_API_TOKEN: string;
+    CF_ACCOUNT_ID: string;
 
     // KV Namespaces
-    RERANK_CACHE: KVNamespace;
     SYNC_STATE: KVNamespace;
 
     // R2 Bucket
     KNOWLEDGE: R2Bucket;
-
-    // Vectorize Index
-    VECTORIZE: VectorizeIndex;
 
     // AI
     AI: Ai;
@@ -27,9 +25,6 @@ declare namespace Cloudflare {
 
     // Rate limiting
     RATE_LIMITER: RateLimit;
-
-    // Phase 2 (optional, unused until then)
-    CF_ACCESS_AUD?: string;
   }
 }
 
@@ -39,16 +34,14 @@ interface Env {
   GITHUB_TOKEN: string;
   GITHUB_WEBHOOK_SECRET: string;
   GITHUB_REPO: string;
+  AI_SEARCH_API_TOKEN: string;
+  CF_ACCOUNT_ID: string;
 
   // KV Namespaces
-  RERANK_CACHE: KVNamespace;
   SYNC_STATE: KVNamespace;
 
   // R2 Bucket
   KNOWLEDGE: R2Bucket;
-
-  // Vectorize Index
-  VECTORIZE: VectorizeIndex;
 
   // AI
   AI: Ai;
@@ -58,7 +51,4 @@ interface Env {
 
   // Rate limiting
   RATE_LIMITER: RateLimit;
-
-  // Phase 2 (optional, unused until then)
-  CF_ACCESS_AUD?: string;
 }

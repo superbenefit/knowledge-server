@@ -3,16 +3,15 @@
 	"name": "knowledge-server",
 	// account_id removed for security - use CLOUDFLARE_ACCOUNT_ID env var
 	"main": "src/index.ts",
-	"compatibility_date": "2025-03-10",
+	"compatibility_date": "2026-02-01",
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
 	/**
 	 * Secrets (set via `npx wrangler secret put <n>`):
-	 *   GITHUB_WEBHOOK_SECRET, GITHUB_TOKEN, GITHUB_REPO
+	 *   GITHUB_WEBHOOK_SECRET, GITHUB_TOKEN, GITHUB_REPO, AI_SEARCH_API_TOKEN, CF_ACCOUNT_ID
 	 */
 	"kv_namespaces": [
-		{ "binding": "RERANK_CACHE", "id": "bcfbd064dc2b451dbd05a85410b33196" },
 		{ "binding": "SYNC_STATE", "id": "6b98b7a4d10746cf90cbfcdc559597ee" }
 	],
 	"workflows": [
@@ -31,13 +30,6 @@
 	"dev": {
 		"port": 8788
 	},
-	"vectorize": [
-		{
-			"binding": "VECTORIZE",
-			"index_name": "superbenefit-knowledge-idx",
-			"remote": true
-		}
-	],
 	"r2_buckets": [
 		{
 			"bucket_name": "superbenefit-knowledge",
@@ -51,19 +43,5 @@
 			"namespace_id": "1002",
 			"simple": { "limit": 100, "period": 60 }
 		}
-	],
-	"queues": {
-		// R2 event notifications feed this queue but must be configured externally:
-		// npx wrangler r2 bucket notification create superbenefit-knowledge \
-		//   --event-type object-create --event-type object-delete \
-		//   --queue superbenefit-knowledge-sync
-		"consumers": [
-			{
-				"queue": "superbenefit-knowledge-sync",
-				"max_batch_size": 10,
-				"max_batch_timeout": 30,
-				"dead_letter_queue": "superbenefit-knowledge-dlq"
-			}
-		]
-	}
+	]
 }
