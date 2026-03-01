@@ -131,9 +131,9 @@ export class KnowledgeSyncWorkflow extends WorkflowEntrypoint<Env, SyncParams> {
         timeout: '30 seconds',
       },
       async () => {
-        const url = `https://api.cloudflare.com/client/v4/accounts/${this.env.CF_ACCOUNT_ID}/autorag/rags/knowledge-search/full_scan`;
+        const url = `https://api.cloudflare.com/client/v4/accounts/${this.env.CF_ACCOUNT_ID}/ai-search/instances/knowledge-search/jobs`;
         const res = await fetch(url, {
-          method: 'PATCH',
+          method: 'POST',
           headers: {
             Authorization: `Bearer ${this.env.AI_SEARCH_API_TOKEN}`,
             'Content-Type': 'application/json',
