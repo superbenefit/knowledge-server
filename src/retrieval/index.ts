@@ -1,18 +1,20 @@
 export { getDocument, getDocumentByPath } from './fetch';
+export { searchViaAiSearch } from './search';
 
 import type { SearchFilters, SearchResult } from '../types';
+import { searchViaAiSearch } from './search';
 
 /**
- * Search the knowledge base.
+ * Search the knowledge base using Cloudflare AI Search.
  *
- * Stub — will be replaced with AI Search API in the next step.
+ * Maintains backward compatibility with REST API and RPC callers.
+ * Filters are mapped to AI Search parameters where supported.
  */
 export async function searchKnowledge(
-  _query: string,
-  _filters: SearchFilters,
+  query: string,
+  filters: SearchFilters,
   _options: { includeDocuments?: boolean } = {},
-  _env: Env,
+  env: Env,
 ): Promise<SearchResult[]> {
-  // TODO: Rewrite with AI Search API (task 5)
-  return [];
+  return searchViaAiSearch(query, { contentType: filters.contentType }, env);
 }
