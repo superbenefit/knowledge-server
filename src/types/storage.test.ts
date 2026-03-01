@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateId, toR2Key, extractIdFromKey, truncateForMetadata } from './storage';
+import { generateId, toR2Key, extractIdFromKey } from './storage';
 
 describe('generateId', () => {
   it('extracts filename without .md extension', () => {
@@ -79,28 +79,5 @@ describe('extractIdFromKey', () => {
 
   it('handles simple keys', () => {
     expect(extractIdFromKey('content/tag/dao.json')).toBe('dao');
-  });
-});
-
-describe('truncateForMetadata', () => {
-  it('returns short content unchanged', () => {
-    const content = 'Short content.';
-    expect(truncateForMetadata(content)).toBe(content);
-  });
-
-  it('truncates content exceeding 8000 chars', () => {
-    const content = 'word '.repeat(2000); // 10000 chars
-    const result = truncateForMetadata(content);
-    // truncateForMetadata: takes first 8000 chars, finds last space, adds "..."
-    expect(result.length).toBeLessThanOrEqual(8003); // up to 8000 + "..."
-    expect(result.endsWith('...')).toBe(true);
-  });
-
-  it('truncates at word boundary', () => {
-    const content = 'a'.repeat(7990) + ' ' + 'b'.repeat(100);
-    const result = truncateForMetadata(content);
-    expect(result.endsWith('...')).toBe(true);
-    // Should not end in a partial word
-    expect(result).not.toContain('bbb');
   });
 });

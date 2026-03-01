@@ -10,7 +10,6 @@
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { Hono } from 'hono';
 import { api } from './api/routes';
-import { handleVectorizeQueue } from './consumers/vectorize';
 import { verifyWebhookSignature, isExcluded } from './sync/github';
 import { SECURITY_HEADERS } from '@superbenefit/porch/security';
 import { searchKnowledge, getDocument, getDocumentByPath } from './retrieval';
@@ -131,13 +130,6 @@ export default class KnowledgeServer extends WorkerEntrypoint<Env> {
     return app.fetch(request, this.env, this.ctx);
   }
 
-  /**
-   * Queue consumer — processes R2 event notifications for Vectorize indexing.
-   */
-  async queue(batch: MessageBatch<unknown>): Promise<void> {
-    return handleVectorizeQueue(batch, this.env);
-  }
-
   // -------------------------------------------------------------------------
   // Webhook handler — private, uses this.env and this.ctx
   // -------------------------------------------------------------------------
@@ -208,8 +200,7 @@ export default class KnowledgeServer extends WorkerEntrypoint<Env> {
   // -------------------------------------------------------------------------
 
   /**
-   * Search the knowledge base using three-stage retrieval pipeline.
-   * Stage 1: Vectorize similarity search → Stage 2: BGE reranker → results
+   * Search the knowledge base.
    */
   async searchKnowledge(params: SearchKnowledgeParams): Promise<SearchKnowledgeResult> {
     if (!params?.query || typeof params.query !== 'string' || params.query.trim() === '') {

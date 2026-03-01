@@ -18,12 +18,11 @@ import {
   PlaceSchema,
   GatheringSchema,
 } from '../types/content';
-import { R2DocumentSchema, VectorizeMetadataSchema } from '../types/storage';
+import { R2DocumentSchema } from '../types/storage';
 import {
   ListParamsSchema,
   SearchParamsSchema,
   SearchResultSchema,
-  RerankResultSchema,
   ErrorResponseSchema,
   EntryResponseSchema,
   EntryListResponseSchema,
@@ -56,13 +55,11 @@ GatheringSchema.openapi('GatheringFrontmatter');
 
 // Storage schemas
 R2DocumentSchema.openapi('R2Document');
-VectorizeMetadataSchema.openapi('VectorizeMetadata');
 
 // API schemas
 ListParamsSchema.openapi('ListParams');
 SearchParamsSchema.openapi('SearchParams');
 SearchResultSchema.openapi('SearchResult');
-RerankResultSchema.openapi('RerankResult');
 ErrorResponseSchema.openapi('ErrorResponse');
 EntryResponseSchema.openapi('EntryResponse');
 EntryListResponseSchema.openapi('EntryListResponse');

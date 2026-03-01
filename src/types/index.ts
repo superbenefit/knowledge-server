@@ -64,7 +64,6 @@ export {
   ListParamsSchema,
   SearchParamsSchema,
   SearchResultSchema,
-  RerankResultSchema,
   ErrorResponseSchema,
   EntryResponseSchema,
   EntryListResponseSchema,
@@ -75,23 +74,19 @@ export type {
   ListParams,
   SearchParams,
   SearchResult,
-  RerankResult,
   ErrorResponse,
 } from './api';
 
 // Storage (spec section 4)
 export {
   VECTORIZE_LIMITS,
-  VECTORIZE_NAMESPACE,
   R2DocumentSchema,
-  VectorizeMetadataSchema,
-  truncateForMetadata,
   generateId,
   toR2Key,
   extractIdFromKey,
   extractContentTypeFromKey,
 } from './storage';
-export type { R2Document, VectorizeMetadata } from './storage';
+export type { R2Document } from './storage';
 
 // Sync (spec section 5)
 export { SyncParamsSchema } from './sync';
