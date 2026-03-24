@@ -77,6 +77,21 @@ export function shouldSync(frontmatter: Record<string, unknown>): boolean {
 }
 
 /**
+ * Extract attachment paths referenced in a markdown body.
+ * Matches Obsidian embed syntax: ![[attachments/filename.ext]]
+ * Returns deduplicated R2 keys, e.g. ["attachments/foo.png"]
+ */
+export function extractAttachmentRefs(body: string): string[] {
+  const refs = new Set<string>();
+  const regex = /!\[\[attachments\/([^\]]+)\]\]/g;
+  let match;
+  while ((match = regex.exec(body)) !== null) {
+    refs.add(`attachments/${match[1]}`);
+  }
+  return Array.from(refs);
+}
+
+/**
  * Resolve the content type for a file: use frontmatter `type` if present
  * and valid, otherwise infer from the file path.
  */
