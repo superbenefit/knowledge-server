@@ -22,6 +22,25 @@ export class KnowledgeSyncWorkflow extends WorkflowEntrypoint<Env, SyncParams> {
   async run(event: Readonly<WorkflowEvent<SyncParams>>, step: WorkflowStep) {
     const { changedFiles, deletedFiles, commitSha } = event.payload;
 
+    // One-time migration: move content/index/index.json → indexes/index.json
+    await step.do(
+      'migrate-index-key',
+      {
+        retries: { limit: 2, delay: '5 seconds', backoff: 'constant' },
+        timeout: '30 seconds',
+      },
+      async () => {
+        const staleKey = 'content/index/index.json';
+        const obj = await this.env.KNOWLEDGE.get(staleKey);
+        if (obj) {
+          const body = await obj.text();
+          await this.env.KNOWLEDGE.put('indexes/index.json', body);
+          await this.env.KNOWLEDGE.delete(staleKey);
+          console.log('Migrated content/index/index.json → indexes/index.json');
+        }
+      },
+    );
+
     // Process changed/added files
     for (const filePath of changedFiles) {
       await step.do(
@@ -121,6 +140,43 @@ export class KnowledgeSyncWorkflow extends WorkflowEntrypoint<Env, SyncParams> {
         },
       );
     }
+
+    // Generate content manifest for zero-credential garden loader.
+    // Lists all content/ objects and writes indexes/all-content.json with the key list.
+    await step.do(
+      'generate-content-manifest',
+      {
+        retries: { limit: 3, delay: '10 seconds', backoff: 'exponential' },
+        timeout: '2 minutes',
+      },
+      async () => {
+        const keys: string[] = [];
+        let cursor: string | undefined;
+        do {
+          const listed = await this.env.KNOWLEDGE.list({
+            prefix: 'content/',
+            ...(cursor ? { cursor } : {}),
+          });
+          for (const obj of listed.objects) {
+            keys.push(obj.key);
+          }
+          cursor = listed.truncated ? listed.cursor : undefined;
+        } while (cursor);
+
+        const manifest: R2Document = {
+          id: 'all-content',
+          contentType: 'index',
+          path: 'indexes/all-content.json',
+          metadata: { keys },
+          content: '',
+          syncedAt: new Date().toISOString(),
+          commitSha,
+        };
+
+        await this.env.KNOWLEDGE.put('indexes/all-content.json', JSON.stringify(manifest));
+        console.log(`Manifest written: ${keys.length} keys`);
+      },
+    );
 
     // Trigger AI Search reindex after all sync steps complete.
     // Non-fatal — AI Search auto-reindexes every 6h anyway.
