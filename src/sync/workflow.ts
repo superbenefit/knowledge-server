@@ -150,31 +150,34 @@ export class KnowledgeSyncWorkflow extends WorkflowEntrypoint<Env, SyncParams> {
         timeout: '2 minutes',
       },
       async () => {
-        const keys: string[] = [];
-        let cursor: string | undefined;
-        do {
-          const listed = await this.env.KNOWLEDGE.list({
-            prefix: 'content/',
-            ...(cursor ? { cursor } : {}),
-          });
-          for (const obj of listed.objects) {
-            keys.push(obj.key);
-          }
-          cursor = listed.truncated ? listed.cursor : undefined;
-        } while (cursor);
+        async function listPrefix(bucket: R2Bucket, prefix: string): Promise<string[]> {
+          const keys: string[] = [];
+          let cursor: string | undefined;
+          do {
+            const listed = await bucket.list({ prefix, ...(cursor ? { cursor } : {}) });
+            for (const obj of listed.objects) keys.push(obj.key);
+            cursor = listed.truncated ? listed.cursor : undefined;
+          } while (cursor);
+          return keys;
+        }
+
+        const [keys, attachmentKeys] = await Promise.all([
+          listPrefix(this.env.KNOWLEDGE, 'content/'),
+          listPrefix(this.env.KNOWLEDGE, 'attachments/'),
+        ]);
 
         const manifest: R2Document = {
           id: 'all-content',
           contentType: 'index',
           path: 'indexes/all-content.json',
-          metadata: { keys },
+          metadata: { keys, attachmentKeys },
           content: '',
           syncedAt: new Date().toISOString(),
           commitSha,
         };
 
         await this.env.KNOWLEDGE.put('indexes/all-content.json', JSON.stringify(manifest));
-        console.log(`Manifest written: ${keys.length} keys`);
+        console.log(`Manifest written: ${keys.length} content keys, ${attachmentKeys.length} attachment keys`);
       },
     );
 
