@@ -136,14 +136,21 @@ describe('resolveContentType', () => {
 });
 
 describe('extractAttachmentRefs', () => {
-  it('extracts attachment paths from Obsidian embeds', () => {
+  it('extracts attachment paths from Obsidian embeds in body', () => {
     const body = 'Some text\n![[attachments/cover.png]]\nMore text\n![[attachments/doc.pdf]]';
     expect(extractAttachmentRefs(body)).toEqual(['attachments/cover.png', 'attachments/doc.pdf']);
   });
 
-  it('deduplicates repeated refs', () => {
-    const body = '![[attachments/foo.png]]\n![[attachments/foo.png]]';
-    expect(extractAttachmentRefs(body)).toEqual(['attachments/foo.png']);
+  it('extracts attachment paths from frontmatter fields (e.g. banner)', () => {
+    const raw = '---\nbanner: "![[attachments/cover.png]]"\npublish: true\n---\nBody text.';
+    const body = 'Body text.';
+    expect(extractAttachmentRefs(body, raw)).toEqual(['attachments/cover.png']);
+  });
+
+  it('deduplicates refs across body and frontmatter', () => {
+    const raw = '---\nbanner: "![[attachments/foo.png]]"\n---\n![[attachments/foo.png]]';
+    const body = '![[attachments/foo.png]]';
+    expect(extractAttachmentRefs(body, raw)).toEqual(['attachments/foo.png']);
   });
 
   it('ignores non-attachment embeds', () => {

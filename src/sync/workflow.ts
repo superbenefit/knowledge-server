@@ -122,7 +122,7 @@ export class KnowledgeSyncWorkflow extends WorkflowEntrypoint<Env, SyncParams> {
             throw err;
           }
 
-          return extractAttachmentRefs(parsed.body);
+          return extractAttachmentRefs(parsed.body, raw);
         },
       );
       allAttachmentRefs.push(...attachmentRefs);
