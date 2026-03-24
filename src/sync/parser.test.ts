@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseMarkdown, shouldSync, resolveContentType, validateFrontmatter } from './parser';
+import { parseMarkdown, shouldSync, resolveContentType, validateFrontmatter, extractAttachmentRefs } from './parser';
 
 describe('parseMarkdown', () => {
   it('parses valid YAML frontmatter and body', () => {
@@ -132,6 +132,27 @@ describe('resolveContentType', () => {
 
   it('returns file for unknown paths with no frontmatter type', () => {
     expect(resolveContentType({}, 'unknown/path.md')).toBe('file');
+  });
+});
+
+describe('extractAttachmentRefs', () => {
+  it('extracts attachment paths from Obsidian embeds', () => {
+    const body = 'Some text\n![[attachments/cover.png]]\nMore text\n![[attachments/doc.pdf]]';
+    expect(extractAttachmentRefs(body)).toEqual(['attachments/cover.png', 'attachments/doc.pdf']);
+  });
+
+  it('deduplicates repeated refs', () => {
+    const body = '![[attachments/foo.png]]\n![[attachments/foo.png]]';
+    expect(extractAttachmentRefs(body)).toEqual(['attachments/foo.png']);
+  });
+
+  it('ignores non-attachment embeds', () => {
+    const body = '![[some-note]]\n![[docs/guide]]\n![[attachments/img.webp]]';
+    expect(extractAttachmentRefs(body)).toEqual(['attachments/img.webp']);
+  });
+
+  it('returns empty array when no attachments', () => {
+    expect(extractAttachmentRefs('Just plain text with [[links]]')).toEqual([]);
   });
 });
 

@@ -4,8 +4,8 @@ import type { SyncParams } from '../types/sync';
 import { inferContentType } from '../types/content';
 import { generateId, toR2Key } from '../types/storage';
 import type { R2Document } from '../types/storage';
-import { parseMarkdown, shouldSync, resolveContentType } from './parser';
-import { fetchFileContent } from './github';
+import { parseMarkdown, shouldSync, resolveContentType, extractAttachmentRefs } from './parser';
+import { fetchFileContent, fetchFileBinary } from './github';
 
 /**
  * KnowledgeSyncWorkflow — Cloudflare Workflow that syncs markdown files
@@ -41,15 +41,16 @@ export class KnowledgeSyncWorkflow extends WorkflowEntrypoint<Env, SyncParams> {
       },
     );
 
-    // Process changed/added files
+    // Process changed/added files — collect attachment refs from each synced file
+    const allAttachmentRefs: string[] = [];
     for (const filePath of changedFiles) {
-      await step.do(
+      const attachmentRefs = await step.do(
         `sync-${filePath}`,
         {
           retries: { limit: 5, delay: '30 seconds', backoff: 'exponential' },
           timeout: '2 minutes',
         },
-        async () => {
+        async (): Promise<string[]> => {
           // Fetch file content from GitHub
           let raw: string;
           try {
@@ -94,7 +95,7 @@ export class KnowledgeSyncWorkflow extends WorkflowEntrypoint<Env, SyncParams> {
             } else {
               console.log(`Skipped ${filePath}: not published or is draft`);
             }
-            return;
+            return [];
           }
 
           const contentType = resolveContentType(parsed.frontmatter, filePath);
@@ -120,6 +121,31 @@ export class KnowledgeSyncWorkflow extends WorkflowEntrypoint<Env, SyncParams> {
             console.error(`R2 put failed for ${filePath}:`, err instanceof Error ? err.message : err);
             throw err;
           }
+
+          return extractAttachmentRefs(parsed.body);
+        },
+      );
+      allAttachmentRefs.push(...attachmentRefs);
+    }
+
+    // Sync attachments referenced in published content (deduplicated)
+    const uniqueAttachments = [...new Set(allAttachmentRefs)];
+    for (const attachmentPath of uniqueAttachments) {
+      await step.do(
+        `sync-attachment-${attachmentPath}`,
+        {
+          retries: { limit: 3, delay: '30 seconds', backoff: 'exponential' },
+          timeout: '2 minutes',
+        },
+        async () => {
+          const buffer = await fetchFileBinary(
+            attachmentPath,
+            commitSha,
+            this.env.GITHUB_REPO,
+            this.env.GITHUB_TOKEN,
+          );
+          await this.env.KNOWLEDGE.put(attachmentPath, buffer);
+          console.log(`Synced attachment: ${attachmentPath}`);
         },
       );
     }

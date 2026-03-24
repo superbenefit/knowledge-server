@@ -64,6 +64,42 @@ export async function verifyWebhookSignature(
 }
 
 /**
+ * Fetch a binary file from the GitHub Contents API.
+ *
+ * Uses the raw media type to get the file bytes directly.
+ * Throws on non-2xx responses (caller handles retry logic via workflow steps).
+ */
+export async function fetchFileBinary(
+  filePath: string,
+  commitSha: string,
+  repo: string,
+  token: string,
+): Promise<ArrayBuffer> {
+  const encodedPath = filePath
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  const url = `https://api.github.com/repos/${repo}/contents/${encodedPath}?ref=${commitSha}`;
+  const resp = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github.v3.raw',
+      'User-Agent': 'superbenefit-knowledge-server',
+    },
+    signal: AbortSignal.timeout(30000),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    const err = new Error(`GitHub API ${resp.status}: ${text}`);
+    (err as any).status = resp.status;
+    throw err;
+  }
+
+  return resp.arrayBuffer();
+}
+
+/**
  * Fetch raw file content from the GitHub Contents API.
  *
  * Returns the decoded UTF-8 content string.
