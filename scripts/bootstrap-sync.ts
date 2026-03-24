@@ -35,7 +35,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Config
 // ---------------------------------------------------------------------------
 
-const DEFAULT_BATCH_SIZE = 50;
+const DEFAULT_BATCH_SIZE = 20;
 
 // ---------------------------------------------------------------------------
 // .dev.vars loader
