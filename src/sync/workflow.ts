@@ -187,23 +187,29 @@ export class KnowledgeSyncWorkflow extends WorkflowEntrypoint<Env, SyncParams> {
           return keys;
         }
 
-        const [keys, attachmentKeys] = await Promise.all([
+        const MANIFEST_KEY = 'indexes/all-content.json';
+        const [keys, indexKeys, attachmentKeys] = await Promise.all([
           listPrefix(this.env.KNOWLEDGE, 'content/'),
+          listPrefix(this.env.KNOWLEDGE, 'indexes/').then((k) =>
+            k.filter((key) => key !== MANIFEST_KEY),
+          ),
           listPrefix(this.env.KNOWLEDGE, 'attachments/'),
         ]);
 
         const manifest: R2Document = {
           id: 'all-content',
           contentType: 'index',
-          path: 'indexes/all-content.json',
-          metadata: { keys, attachmentKeys },
+          path: MANIFEST_KEY,
+          metadata: { keys, indexKeys, attachmentKeys },
           content: '',
           syncedAt: new Date().toISOString(),
           commitSha,
         };
 
-        await this.env.KNOWLEDGE.put('indexes/all-content.json', JSON.stringify(manifest));
-        console.log(`Manifest written: ${keys.length} content keys, ${attachmentKeys.length} attachment keys`);
+        await this.env.KNOWLEDGE.put(MANIFEST_KEY, JSON.stringify(manifest));
+        console.log(
+          `Manifest written: ${keys.length} content keys, ${indexKeys.length} index keys, ${attachmentKeys.length} attachment keys`,
+        );
       },
     );
 
